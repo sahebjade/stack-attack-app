@@ -137,6 +137,62 @@ const buildMergeOps = (n) => {
   return ops;
 };
 
+// Compute current group boundaries for merge sort visualization
+const computeMergeGroups = (mergeOps, currentOpIdx, n) => {
+  const groupOf = Array.from({ length: n }, (_, i) => i);
+  let nextId = n;
+  for (let i = 0; i < currentOpIdx && i < mergeOps.length; i++) {
+    const gid = nextId++;
+    for (let j = mergeOps[i].start; j < mergeOps[i].end; j++) groupOf[j] = gid;
+  }
+  const groups = [];
+  let i = 0;
+  while (i < n) {
+    const gid = groupOf[i];
+    let j = i + 1;
+    while (j < n && groupOf[j] === gid) j++;
+    groups.push({ start: i, end: j, size: j - i });
+    i = j;
+  }
+  return groups;
+};
+
+// Get human-readable merge level info
+const getMergeLevelInfo = (mergeOps, currentOpIdx, n) => {
+  let size = 1;
+  let opCount = 0;
+  let level = 1;
+  while (size < n) {
+    let levelOps = 0;
+    for (let start = 0; start < n; start += size * 2) {
+      const mid = Math.min(start + size, n);
+      const end = Math.min(start + size * 2, n);
+      if (mid < end) levelOps++;
+    }
+    if (opCount + levelOps > currentOpIdx) {
+      const opInLevel = currentOpIdx - opCount;
+      const targetSize = size * 2;
+      const totalLevels = Math.ceil(Math.log2(n));
+      let desc, shortDesc;
+      if (size === 1) {
+        desc = `Pass ${level} of ${totalLevels}: Combine single cards into sorted pairs`;
+        shortDesc = 'Making sorted pairs';
+      } else if (targetSize >= n) {
+        desc = `Pass ${level} of ${totalLevels}: Final merge — combine everything into one sorted row`;
+        shortDesc = 'Final merge!';
+      } else {
+        desc = `Pass ${level} of ${totalLevels}: Combine groups of ${size} into sorted groups of ${targetSize}`;
+        shortDesc = `Making groups of ${targetSize}`;
+      }
+      return { level, totalLevels, desc, shortDesc, opInLevel: opInLevel + 1, opsThisLevel: levelOps, targetSize };
+    }
+    opCount += levelOps;
+    size *= 2;
+    level++;
+  }
+  return { level, totalLevels: level, desc: 'All merged!', shortDesc: 'Done', opInLevel: 0, opsThisLevel: 0, targetSize: n };
+};
+
 // Compute theoretical minimum comparisons for each algorithm on a given deck
 const computeMins = (deck) => {
   const n = deck.length;
@@ -1545,14 +1601,22 @@ function getTutorialHint(state, activePlayerIdx) {
 
   // Merge
   if (p.school === 'merge') {
-    if (p.mergePhase === 'start_merge') return `Click "Start Merging" to begin combining the two groups.`;
+    if (p.mergePhase === 'start_merge') {
+      const op = p.mergeOps[p.currentMergeOpIdx];
+      if (op) {
+        const leftVals = p.lane.slice(op.start, op.mid).map(c => c.value);
+        const rightVals = p.lane.slice(op.mid, op.end).map(c => c.value);
+        return `Click "Compare & Combine" to merge [${leftVals}] and [${rightVals}] into one sorted group.`;
+      }
+      return `Click "Compare & Combine" to begin.`;
+    }
     if (p.pendingAction && p.pendingAction.type === 'merge_compare') {
       const { leftVal, rightVal, takeLeft } = p.pendingAction;
       return takeLeft
-        ? `${leftVal} ≤ ${rightVal} → click "Take ${leftVal}" (the smaller one goes first).`
-        : `${rightVal} < ${leftVal} → click "Take ${rightVal}" (the smaller one goes first).`;
+        ? `${leftVal} ≤ ${rightVal} — ${leftVal} is smaller, so click "Take ${leftVal}" to add it to the sorted result.`
+        : `${rightVal} < ${leftVal} — ${rightVal} is smaller, so click "Take ${rightVal}" to add it to the sorted result.`;
     }
-    if (p.mergePhase === 'comparing') return `Click "Compare Next" to look at the front of each group.`;
+    if (p.mergePhase === 'comparing') return `Click "Which is smaller?" to compare the front card of each group.`;
   }
   return null;
 }
@@ -1991,15 +2055,14 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
           }
           iterColor = C.crimson;
         } else if (p.school === 'merge') {
-          const opNum = p.currentMergeOpIdx + 1;
-          const totalOps = p.mergeOps.length;
-          iterLabel = `Merge ${opNum} of ${totalOps}`;
+          const levelInfo = getMergeLevelInfo(p.mergeOps, p.currentMergeOpIdx, p.lane.length);
+          iterLabel = levelInfo.shortDesc;
           if (p.mergeState) {
             const merged = p.mergeState.merged.length;
             const total = p.mergeState.op.end - p.mergeState.op.start;
-            iterDetail = `${merged} of ${total} cards merged`;
+            iterDetail = `Combining: ${merged} of ${total} cards placed`;
           } else {
-            iterDetail = `Starting next merge`;
+            iterDetail = `Merge ${levelInfo.opInLevel} of ${levelInfo.opsThisLevel} this pass`;
           }
           iterColor = C.cobalt;
         }
@@ -2079,21 +2142,36 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
           })}
         </div>
       )}
-      {!p.finished && p.school === 'merge' && p.mergeState && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
-          {p.lane.map((_, idx) => {
-            const op = p.mergeState.op;
-            const isLeft = idx >= op.start && idx < op.mid;
-            const isRight = idx >= op.mid && idx < op.end;
-            return (
-              <div key={idx} className="font-mono" style={{
-                width: 64, textAlign: 'center', fontSize: 9,
-                color: isLeft ? C.cobalt : isRight ? C.crimson : 'transparent',
-                letterSpacing: '0.1em', fontWeight: 600,
-              }}>{isLeft ? 'LEFT' : isRight ? 'RIGHT' : ''}</div>
-            );
-          })}
-        </div>
+      {!p.finished && p.school === 'merge' && (
+        (() => {
+          const groups = computeMergeGroups(p.mergeOps, p.currentMergeOpIdx, p.lane.length);
+          const op = p.mergeState ? p.mergeState.op : (p.mergeOps[p.currentMergeOpIdx] || null);
+          const cardW = compact ? 52 : 69; // card width + gap
+          return (
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
+              <div style={{ position: 'relative', width: cardW * p.lane.length }}>
+                {/* LEFT / RIGHT labels for active merge */}
+                {op && (
+                  <div style={{ display: 'flex', position: 'relative', height: 16 }}>
+                    {p.lane.map((_, idx) => {
+                      const isLeft = idx >= op.start && idx < op.mid;
+                      const isRight = idx >= op.mid && idx < op.end;
+                      return (
+                        <div key={idx} className="font-mono" style={{
+                          width: cardW, textAlign: 'center', fontSize: 9, lineHeight: '16px',
+                          color: isLeft ? C.cobalt : isRight ? C.crimson : 'transparent',
+                          letterSpacing: '0.1em', fontWeight: 600,
+                        }}>{isLeft ? 'LEFT' : isRight ? 'RIGHT' : ''}</div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Group brackets underneath will appear below the lane */}
+                {/* Render bracket overlay data as a data attribute for the bracket row below */}
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {/* The lane itself */}
@@ -2114,6 +2192,60 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
           return !card.locked && idx >= s && idx < e;
         }}
       />
+
+      {/* Merge group brackets below lane */}
+      {!p.finished && p.school === 'merge' && (() => {
+        const groups = computeMergeGroups(p.mergeOps, p.currentMergeOpIdx, p.lane.length);
+        const op = p.mergeState ? p.mergeState.op : (p.mergeOps[p.currentMergeOpIdx] || null);
+        const cardW = compact ? 52 : 69;
+        const levelInfo = getMergeLevelInfo(p.mergeOps, p.currentMergeOpIdx, p.lane.length);
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex' }}>
+                {groups.map((g, gi) => {
+                  const w = g.size * cardW;
+                  const isActiveLeft = op && g.start === op.start && g.end === op.mid;
+                  const isActiveRight = op && g.start === op.mid && g.end === op.end;
+                  const isActive = isActiveLeft || isActiveRight;
+                  const isSorted = g.size > 1;
+                  const bracketColor = isActiveLeft ? C.cobalt : isActiveRight ? C.crimson : isSorted ? C.emerald : C.rule;
+                  const bgColor = isActiveLeft ? `${C.cobalt}10` : isActiveRight ? `${C.crimson}08` : 'transparent';
+                  return (
+                    <div key={gi} style={{
+                      width: w, textAlign: 'center', position: 'relative',
+                      borderLeft: `2px solid ${bracketColor}`,
+                      borderRight: `2px solid ${bracketColor}`,
+                      borderBottom: `2px solid ${bracketColor}`,
+                      borderTop: 'none',
+                      height: 20, marginTop: 2,
+                      background: bgColor,
+                      borderRadius: '0 0 4px 4px',
+                      transition: 'all 0.3s ease',
+                    }}>
+                      <span className="font-mono" style={{
+                        position: 'absolute', bottom: 1, left: '50%', transform: 'translateX(-50%)',
+                        fontSize: 8, whiteSpace: 'nowrap',
+                        color: isActive ? bracketColor : isSorted ? C.emerald : C.soft,
+                        fontWeight: isActive ? 700 : 500, letterSpacing: '0.08em',
+                      }}>
+                        {isActiveLeft ? '◀ LEFT' : isActiveRight ? 'RIGHT ▶' : isSorted ? `✓ sorted` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Level progress bar */}
+              <div className="font-sans" style={{
+                textAlign: 'center', marginTop: 6, fontSize: 10, color: C.cobalt,
+                fontWeight: 500, letterSpacing: '0.05em',
+              }}>
+                {levelInfo.desc}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Partition tray */}
       {showTray && p.pivotIdx !== null && (blueCards.length > 0 || redCards.length > 0) && (
@@ -2145,15 +2277,29 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
       {/* Merge tray */}
       {p.school === 'merge' && p.mergeState && p.mergeState.merged.length > 0 && (
         <div style={{
-          marginTop: 16, border: `1px solid ${C.rule}`,
+          marginTop: 16, border: `1px solid ${C.cobalt}30`,
           background: 'rgba(44, 74, 127, 0.04)', padding: '10px 14px',
         }}>
-          <div className="font-sans" style={{
-            fontSize: 9, color: C.cobalt, letterSpacing: '0.15em',
-            textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
-          }}>Merged Result</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div className="font-sans" style={{
+              fontSize: 9, color: C.cobalt, letterSpacing: '0.15em',
+              textTransform: 'uppercase', fontWeight: 600,
+            }}>Combined Result (sorted so far)</div>
+            <div className="font-mono" style={{ fontSize: 9, color: C.soft }}>
+              {p.mergeState.merged.length} of {p.mergeState.op.end - p.mergeState.op.start} cards placed
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
             {p.mergeState.merged.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+          </div>
+          {/* Show remaining from each side */}
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 10, color: C.soft }}>
+            <span className="font-mono">
+              Left remaining: [{p.mergeState.leftCards.slice(p.mergeState.leftPos).map(c => c.value).join(', ') || 'empty'}]
+            </span>
+            <span className="font-mono">
+              Right remaining: [{p.mergeState.rightCards.slice(p.mergeState.rightPos).map(c => c.value).join(', ') || 'empty'}]
+            </span>
           </div>
         </div>
       )}
@@ -2178,7 +2324,7 @@ const AlgoRule = ({ school }) => {
     quick: { rule: 'Pick a pivot. Put smaller cards left, bigger cards right.', color: C.crimson },
     insertion: { rule: 'Pick up the next card. Slide it left until it fits.', color: C.emerald },
     selection: { rule: 'Find the smallest card. Put it in the next open spot.', color: C.violet },
-    merge: { rule: 'Split into halves. Merge them back by always taking the smaller.', color: C.cobalt },
+    merge: { rule: 'Combine two sorted groups into one by always picking the smaller front card.', color: C.cobalt },
   };
   const r = rules[school];
   if (!r) return null;
@@ -2439,40 +2585,116 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
 
   // ── MERGE SORT ──────────────────────────────
   if (p.school === 'merge') {
+    const levelInfo = getMergeLevelInfo(p.mergeOps, p.currentMergeOpIdx, p.lane.length);
+
     if (p.mergePhase === 'start_merge') {
       const op = p.mergeOps[p.currentMergeOpIdx];
       if (!op) return null;
       const leftVals = p.lane.slice(op.start, op.mid).map(c => c.value);
       const rightVals = p.lane.slice(op.mid, op.end).map(c => c.value);
+      const isFirstEver = p.currentMergeOpIdx === 0;
       return (
         <div>
           <AlgoRule school="merge" />
-          <StepDots current={p.currentMergeOpIdx + 1} total={p.mergeOps.length} color={C.cobalt} />
-          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>
-            👉 Merge two sorted groups into one:
-          </div>
+
+          {/* Level progress */}
           <div style={{
-            display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 12, marginTop: 8,
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+            padding: '6px 10px', background: `${C.cobalt}08`, borderRadius: 3,
           }}>
             <div style={{
-              padding: '6px 12px', background: `${C.cobalt}15`, border: `1px solid ${C.cobalt}40`,
-              borderRadius: 3,
+              display: 'flex', gap: 3,
             }}>
-              <span className="font-mono" style={{ fontSize: 9, color: C.cobalt, letterSpacing: '0.12em' }}>LEFT </span>
-              <span className="font-serif" style={{ fontSize: 16, color: C.ink, fontWeight: 500 }}>{leftVals.join(', ')}</span>
+              {Array.from({ length: levelInfo.totalLevels }, (_, i) => (
+                <div key={i} style={{
+                  width: 18, height: 4, borderRadius: 2,
+                  background: i < levelInfo.level ? C.cobalt : C.rule,
+                  transition: 'background 0.3s',
+                }} />
+              ))}
             </div>
-            <span className="font-sans" style={{ fontSize: 14, color: C.soft, alignSelf: 'center' }}>+</span>
+            <span className="font-mono" style={{ fontSize: 9, color: C.cobalt, letterSpacing: '0.08em', fontWeight: 600 }}>
+              {levelInfo.shortDesc}
+            </span>
+            <span className="font-mono" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.08em', marginLeft: 'auto' }}>
+              Merge {levelInfo.opInLevel}/{levelInfo.opsThisLevel} this pass
+            </span>
+          </div>
+
+          {/* Explanation */}
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 8, lineHeight: 1.5 }}>
+            {isFirstEver ? (
+              <>👉 <strong>Goal:</strong> Combine these two groups into one sorted group. You'll compare one card from each side and always pick the smaller one.</>
+            ) : (
+              <>👉 Next up: combine these two groups. Compare front cards, pick the smaller one each time.</>
+            )}
+          </div>
+
+          {/* Visual: which groups are being merged */}
+          <div style={{
+            display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 12, marginTop: 8, alignItems: 'stretch',
+          }}>
             <div style={{
-              padding: '6px 12px', background: `${C.crimson}12`, border: `1px solid ${C.crimson}30`,
-              borderRadius: 3,
+              padding: '8px 14px', background: `${C.cobalt}12`, border: `2px solid ${C.cobalt}50`,
+              borderRadius: 4, textAlign: 'center', flex: '0 1 auto',
             }}>
-              <span className="font-mono" style={{ fontSize: 9, color: C.crimson, letterSpacing: '0.12em' }}>RIGHT </span>
-              <span className="font-serif" style={{ fontSize: 16, color: C.ink, fontWeight: 500 }}>{rightVals.join(', ')}</span>
+              <div className="font-mono" style={{ fontSize: 8, color: C.cobalt, letterSpacing: '0.15em', fontWeight: 700, marginBottom: 4 }}>
+                ◀ LEFT GROUP
+              </div>
+              <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                {leftVals.map((v, i) => (
+                  <span key={i} className="font-serif" style={{
+                    fontSize: 18, fontWeight: 600, color: C.ink,
+                    padding: '2px 6px', background: C.cream, borderRadius: 3,
+                    border: `1px solid ${C.cobalt}30`,
+                  }}>{v}</span>
+                ))}
+              </div>
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', padding: '0 4px',
+            }}>
+              <span className="font-serif" style={{ fontSize: 20, color: C.soft }}>→</span>
+            </div>
+            <div style={{
+              padding: '8px 12px', background: `${C.emerald}08`, border: `2px dashed ${C.emerald}40`,
+              borderRadius: 4, textAlign: 'center', flex: '0 1 auto',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div className="font-mono" style={{ fontSize: 8, color: C.emerald, letterSpacing: '0.15em', fontWeight: 700, marginBottom: 2 }}>
+                RESULT
+              </div>
+              <span className="font-sans" style={{ fontSize: 11, color: C.soft, fontStyle: 'italic' }}>
+                {leftVals.length + rightVals.length} cards sorted
+              </span>
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', padding: '0 4px',
+            }}>
+              <span className="font-serif" style={{ fontSize: 20, color: C.soft }}>←</span>
+            </div>
+            <div style={{
+              padding: '8px 14px', background: `${C.crimson}08`, border: `2px solid ${C.crimson}40`,
+              borderRadius: 4, textAlign: 'center', flex: '0 1 auto',
+            }}>
+              <div className="font-mono" style={{ fontSize: 8, color: C.crimson, letterSpacing: '0.15em', fontWeight: 700, marginBottom: 4 }}>
+                RIGHT GROUP ▶
+              </div>
+              <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                {rightVals.map((v, i) => (
+                  <span key={i} className="font-serif" style={{
+                    fontSize: 18, fontWeight: 600, color: C.ink,
+                    padding: '2px 6px', background: C.cream, borderRadius: 3,
+                    border: `1px solid ${C.crimson}30`,
+                  }}>{v}</span>
+                ))}
+              </div>
             </div>
           </div>
+
           <div style={{ textAlign: 'center' }}>
             <Button small onClick={() => dispatch({ type: 'MERGE_START', playerIdx })}>
-              Start Merging
+              Compare & Combine →
             </Button>
           </div>
         </div>
@@ -2480,39 +2702,76 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
     }
     if (p.mergePhase === 'comparing' && p.mergeState) {
       const { leftCards, rightCards, leftPos, rightPos, merged } = p.mergeState;
+      const totalCards = leftCards.length + rightCards.length;
       if (p.pendingAction && p.pendingAction.type === 'merge_compare') {
         const { leftVal, rightVal } = p.pendingAction;
         return (
           <div>
             <AlgoRule school="merge" />
-            <div className="font-sans" style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>
-              Which is smaller? Take it for the merged result.
+            <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 6, lineHeight: 1.5 }}>
+              👉 Compare the <strong style={{ color: C.cobalt }}>front of Left</strong> vs <strong style={{ color: C.crimson }}>front of Right</strong>. Pick the smaller card to add to the sorted result.
             </div>
-            <ComparePrompt leftLabel="LEFT NEXT" leftVal={leftVal} rightLabel="RIGHT NEXT" rightVal={rightVal}>
+
+            {/* Progress */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10,
+            }}>
+              <div style={{ flex: 1, height: 4, background: C.rule, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${(merged.length / totalCards) * 100}%`,
+                  background: C.emerald, borderRadius: 2, transition: 'width 0.3s ease',
+                }} />
+              </div>
+              <span className="font-mono" style={{ fontSize: 9, color: C.soft }}>{merged.length}/{totalCards}</span>
+            </div>
+
+            <ComparePrompt leftLabel="LEFT FRONT" leftVal={leftVal} rightLabel="RIGHT FRONT" rightVal={rightVal}>
               <Button variant="keep" small onClick={() => dispatch({ type: 'MERGE_EXECUTE', takeLeft: true, playerIdx })}>
-                {leftVal} is smaller → Take {leftVal}
+                Take {leftVal} (from Left)
               </Button>
               <Button variant="swap" small onClick={() => dispatch({ type: 'MERGE_EXECUTE', takeLeft: false, playerIdx })}>
-                {rightVal} is smaller → Take {rightVal}
+                Take {rightVal} (from Right)
               </Button>
             </ComparePrompt>
-            {merged.length > 0 && (
-              <div className="font-mono" style={{ fontSize: 10, color: C.soft, marginTop: 8, textAlign: 'center' }}>
-                Result so far: [{merged.map(c => c.value).join(', ')}]
+
+            {/* Remaining in each group */}
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div className="font-mono" style={{ fontSize: 8, color: C.cobalt, letterSpacing: '0.1em', fontWeight: 600, marginBottom: 3 }}>LEFT REMAINING</div>
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {leftCards.slice(leftPos).map((c, i) => (
+                    <span key={i} className="font-mono" style={{
+                      fontSize: 12, padding: '2px 5px', background: i === 0 ? `${C.cobalt}20` : C.cream,
+                      border: `1px solid ${i === 0 ? C.cobalt : C.rule}`, borderRadius: 2,
+                      fontWeight: i === 0 ? 700 : 400,
+                    }}>{c.value}</span>
+                  ))}
+                </div>
               </div>
-            )}
+              <div style={{ textAlign: 'center' }}>
+                <div className="font-mono" style={{ fontSize: 8, color: C.crimson, letterSpacing: '0.1em', fontWeight: 600, marginBottom: 3 }}>RIGHT REMAINING</div>
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {rightCards.slice(rightPos).map((c, i) => (
+                    <span key={i} className="font-mono" style={{
+                      fontSize: 12, padding: '2px 5px', background: i === 0 ? `${C.crimson}15` : C.cream,
+                      border: `1px solid ${i === 0 ? C.crimson : C.rule}`, borderRadius: 2,
+                      fontWeight: i === 0 ? 700 : 400,
+                    }}>{c.value}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         );
       }
       const leftDone = leftPos >= leftCards.length;
       const rightDone = rightPos >= rightCards.length;
       if (leftDone || rightDone) {
-        // This shouldn't normally be visible because merge auto-completes, but just in case
         return (
           <div>
             <AlgoRule school="merge" />
-            <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
-              One side is empty. Appending the rest automatically…
+            <div className="font-sans" style={{ fontSize: 13, color: C.emerald, marginBottom: 10, fontWeight: 500 }}>
+              ✓ One group is empty — the remaining cards go straight to the result!
             </div>
           </div>
         );
@@ -2520,17 +2779,36 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
       return (
         <div>
           <AlgoRule school="merge" />
-          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
-            👉 Compare the front cards of each group.
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 6, lineHeight: 1.5 }}>
+            👉 Look at the <strong>first card</strong> from each group. Click below to compare them.
           </div>
-          {merged.length > 0 && (
-            <div className="font-mono" style={{ fontSize: 10, color: C.soft, marginBottom: 8 }}>
-              Result so far: [{merged.map(c => c.value).join(', ')}]
+
+          {/* Show front cards of each group */}
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginBottom: 10, alignItems: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div className="font-mono" style={{ fontSize: 8, color: C.cobalt, letterSpacing: '0.1em', fontWeight: 600, marginBottom: 3 }}>LEFT FRONT</div>
+              <span className="font-serif" style={{
+                fontSize: 24, fontWeight: 600, color: C.ink,
+                padding: '4px 10px', background: `${C.cobalt}15`,
+                border: `2px solid ${C.cobalt}`, borderRadius: 4, display: 'inline-block',
+              }}>{leftCards[leftPos].value}</span>
             </div>
-          )}
-          <Button small onClick={() => dispatch({ type: 'MERGE_SETUP_COMPARE', playerIdx })}>
-            Compare Next
-          </Button>
+            <span className="font-sans" style={{ fontSize: 12, color: C.soft }}>vs</span>
+            <div style={{ textAlign: 'center' }}>
+              <div className="font-mono" style={{ fontSize: 8, color: C.crimson, letterSpacing: '0.1em', fontWeight: 600, marginBottom: 3 }}>RIGHT FRONT</div>
+              <span className="font-serif" style={{
+                fontSize: 24, fontWeight: 600, color: C.ink,
+                padding: '4px 10px', background: `${C.crimson}12`,
+                border: `2px solid ${C.crimson}`, borderRadius: 4, display: 'inline-block',
+              }}>{rightCards[rightPos].value}</span>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <Button small onClick={() => dispatch({ type: 'MERGE_SETUP_COMPARE', playerIdx })}>
+              Which is smaller? →
+            </Button>
+          </div>
         </div>
       );
     }
