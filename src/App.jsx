@@ -1451,13 +1451,68 @@ const DemoSetup = ({ onStart }) => {
   const [school, setSchool] = useState('bubble');
   const [mode, setMode] = useState('tutorial');
 
+  const howToPlay = {
+    bubble: {
+      color: C.gold,
+      steps: [
+        'You have 8 cards in a row.',
+        'A pawn moves left to right, comparing each pair of neighbors.',
+        'If the left card is bigger → Swap them. Otherwise → Keep.',
+        'When the pawn reaches the end, the largest card gets locked on the right.',
+        'Repeat passes until every card is locked. Fewer comparisons = higher score!',
+      ],
+    },
+    quick: {
+      color: C.crimson,
+      steps: [
+        'You have 8 cards in a row.',
+        'Pick one card as your pivot (try to guess the middle value).',
+        'Compare each other card against the pivot: smaller → Left, bigger → Right.',
+        'When all cards are placed, the pivot locks in its final spot.',
+        'Repeat for any unsorted sub-groups until everything is locked.',
+      ],
+    },
+    insertion: {
+      color: C.emerald,
+      steps: [
+        'Card 1 is already "sorted." You pick up card 2.',
+        'Compare your held card with the card to its left.',
+        'If the left card is bigger, it slides right to make room.',
+        'Keep sliding until you find where your card fits, then drop it.',
+        'Repeat for each card until the whole row is sorted.',
+      ],
+    },
+    selection: {
+      color: C.violet,
+      steps: [
+        'Scan the entire row to find the smallest card.',
+        'Compare each card against your current smallest.',
+        'When you reach the end, swap the smallest into position 1 and lock it.',
+        'Now scan the remaining cards for the next smallest.',
+        'Repeat until every position is filled with the correct card.',
+      ],
+    },
+    merge: {
+      color: C.cobalt,
+      steps: [
+        'Cards start as 8 individual "groups" of 1.',
+        'Merge pairs of groups: compare the front card of each group.',
+        'The smaller card goes into the merged result first.',
+        'When one group is empty, append the rest of the other group.',
+        'Keep merging bigger groups until the whole row is one sorted group.',
+      ],
+    },
+  };
+
+  const info = howToPlay[mode === '2player' ? 'bubble' : school];
+
   return (
     <div style={{ padding: '48px 56px' }}>
       <div style={{ textAlign: 'center', marginBottom: 40 }}>
         <Eyebrow color={C.gold}>Ready to Play</Eyebrow>
         <SerifHeading size={40}>Configure your round</SerifHeading>
         <p className="font-sans" style={{ fontSize: 12, color: C.soft, marginTop: 8 }}>
-          Each round uses 8 random cards (1–99).
+          Each round uses 8 random cards (1–99). Sort them with the fewest comparisons to score 100.
         </p>
       </div>
 
@@ -1518,6 +1573,33 @@ const DemoSetup = ({ onStart }) => {
           </div>
         </div>
       )}
+
+      {/* How to Play */}
+      <div style={{
+        marginBottom: 32, padding: '20px 24px',
+        background: `${info.color}08`, border: `1px solid ${info.color}30`,
+        borderLeft: `4px solid ${info.color}`,
+      }}>
+        <div className="font-mono" style={{
+          fontSize: 10, color: info.color, letterSpacing: '0.15em',
+          fontWeight: 600, marginBottom: 12,
+        }}>
+          HOW TO PLAY — {SCHOOL_NAMES[mode === '2player' ? 'bubble' : school].toUpperCase()}
+        </div>
+        <ol style={{ margin: 0, paddingLeft: 20 }}>
+          {info.steps.map((step, i) => (
+            <li key={i} className="font-sans" style={{
+              fontSize: 12, color: C.ink, lineHeight: 1.6,
+              marginBottom: 4,
+            }}>{step}</li>
+          ))}
+        </ol>
+        <div className="font-sans" style={{
+          fontSize: 11, color: C.soft, marginTop: 12, fontStyle: 'italic',
+        }}>
+          💡 Scoring: 100 points if you match the theoretical minimum comparisons. Each extra comparison or wrong call costs points.
+        </div>
+      </div>
 
       <div style={{ textAlign: 'center' }}>
         <Button onClick={() => onStart(school, mode)}>Begin Round →</Button>
@@ -1634,6 +1716,82 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
           </div>
         </div>
       </div>
+
+      {/* Iteration tracker */}
+      {!p.finished && (() => {
+        const n = p.lane.length;
+        const locked = p.lane.filter(c => c.locked).length;
+        let iterLabel = '';
+        let iterDetail = '';
+        let iterColor = C.soft;
+
+        if (p.school === 'bubble') {
+          const passNum = n - p.passEnd + 1;
+          const totalPasses = n - 1;
+          const posInPass = p.pawn + 1;
+          const passSize = p.passEnd - 1;
+          iterLabel = `Pass ${passNum} of ${totalPasses}`;
+          iterDetail = `Comparing pair ${posInPass} of ${passSize} · ${locked} card${locked !== 1 ? 's' : ''} locked`;
+          iterColor = C.gold;
+        } else if (p.school === 'insertion') {
+          const cardNum = p.insertionSorted;
+          iterLabel = `Inserting card ${cardNum} of ${n - 1}`;
+          iterDetail = p.heldCardIdx !== null
+            ? `Holding ${p.lane[p.heldCardIdx].value}, scanning left · ${cardNum - 1} card${cardNum - 1 !== 1 ? 's' : ''} sorted`
+            : `${cardNum} card${cardNum !== 1 ? 's' : ''} sorted so far`;
+          iterColor = C.emerald;
+        } else if (p.school === 'selection') {
+          const round = p.selectionScanStart + 1;
+          iterLabel = `Round ${round} of ${n - 1}`;
+          iterDetail = p.selectionPhase === 'confirm_swap'
+            ? `Found smallest: ${p.lane[p.selectionMinIdx].value} → ready to place`
+            : `Scanning position ${p.selectionScanIdx + 1} · smallest so far: ${p.lane[p.selectionMinIdx].value}`;
+          iterColor = C.violet;
+        } else if (p.school === 'quick') {
+          const depth = p.pendingRanges ? p.pendingRanges.length : 0;
+          if (p.quickPhase === 'choose_pivot') {
+            const [s, e] = p.activeRange;
+            iterLabel = `Partition range [${s + 1}–${e}]`;
+            iterDetail = `Pick a pivot · ${locked} card${locked !== 1 ? 's' : ''} locked · ${depth} range${depth !== 1 ? 's' : ''} queued`;
+          } else if (p.pivotIdx !== null) {
+            const pivotVal = p.lane[p.pivotIdx].value;
+            const [s, e] = p.activeRange;
+            const done = p.compareIdx !== null ? p.compareIdx - s : 0;
+            const total = e - s - 1;
+            iterLabel = `Partitioning around ${pivotVal}`;
+            iterDetail = `${done} of ${total} cards checked · range [${s + 1}–${e}]`;
+          }
+          iterColor = C.crimson;
+        } else if (p.school === 'merge') {
+          const opNum = p.currentMergeOpIdx + 1;
+          const totalOps = p.mergeOps.length;
+          iterLabel = `Merge ${opNum} of ${totalOps}`;
+          if (p.mergeState) {
+            const merged = p.mergeState.merged.length;
+            const total = p.mergeState.op.end - p.mergeState.op.start;
+            iterDetail = `${merged} of ${total} cards merged`;
+          } else {
+            iterDetail = `Starting next merge`;
+          }
+          iterColor = C.cobalt;
+        }
+
+        return iterLabel ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '6px 12px', marginBottom: 8,
+            background: `${iterColor}0A`, borderLeft: `3px solid ${iterColor}`,
+          }}>
+            <span className="font-mono" style={{
+              fontSize: 10, color: iterColor, letterSpacing: '0.1em',
+              fontWeight: 600, whiteSpace: 'nowrap',
+            }}>{iterLabel}</span>
+            <span className="font-sans" style={{
+              fontSize: 11, color: C.soft,
+            }}>{iterDetail}</span>
+          </div>
+        ) : null;
+      })()}
 
       {/* Pivot/pawn indicator row */}
       {!p.finished && p.school === 'bubble' && (
