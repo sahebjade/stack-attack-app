@@ -1280,7 +1280,7 @@ const Hero = ({ onPlayClick }) => (
     <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 80, alignItems: 'center' }}>
         <div style={{ animation: 'fadeUp 0.8s ease-out' }}>
-          <Eyebrow color={C.gold}>A Board Game That Teaches Computer Science</Eyebrow>
+          <Eyebrow color={C.gold}>A Board Game That Teaches STEM Concepts</Eyebrow>
           <h1 className="font-serif" style={{
             fontSize: 108, fontWeight: 500, color: C.ink, lineHeight: 0.95,
             letterSpacing: '-0.03em', margin: '24px 0 32px',
@@ -1379,7 +1379,7 @@ const ProblemSection = () => (
     <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
       <Eyebrow>The Problem</Eyebrow>
       <SerifHeading size={54}>
-        Algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
+        STEM concepts are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
       </SerifHeading>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
         <DecorativeRule width={120} />
@@ -1388,9 +1388,9 @@ const ProblemSection = () => (
         fontSize: 22, color: C.slate, lineHeight: 1.6, marginTop: 36,
         maxWidth: 720, margin: '36px auto 0',
       }}>
-        Most textbooks teach algorithms as pseudocode. Most videos teach them as animation. Most
-        students memorize names and forget them by Thursday. There{"'"}s a better way:
-        <span style={{ color: C.ink, fontStyle: 'italic' }}>&nbsp;make the student become the algorithm.</span>
+        Most textbooks teach with pseudocode. Most videos teach with animation. Most
+        students memorize terms and forget them by Thursday. There{"'"}s a better way:
+        <span style={{ color: C.ink, fontStyle: 'italic' }}>&nbsp;make the student become the process.</span>
       </p>
       <div style={{
         marginTop: 80, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
