@@ -951,8 +951,6 @@ const GlobalStyles = () => (
       .difficulty-row > button { flex: 1 1 40% !important; }
       .howto-box { padding: 16px 12px !important; }
       .player-panel { padding: 12px !important; }
-      .lane-row { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
-      .player-panel { padding: 12px !important; }
       .stats-row { flex-wrap: wrap !important; gap: 8px !important; }
       .stats-row > div { min-width: auto !important; flex: 1 1 auto !important; }
       .serif-desc { font-size: 16px !important; max-width: 100% !important; }
@@ -971,7 +969,7 @@ const GlobalStyles = () => (
 // SHARED VISUAL COMPONENTS
 // ============================================================================
 
-const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = false }) => {
+const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = false, fluid = false }) => {
   const barHeight = Math.max(0.1, Math.min(1, value / 50));
   const suitColor =
     value <= 10 ? C.cobalt :
@@ -993,6 +991,50 @@ const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = 
   const tintOverlay =
     highlight === 'blue' ? 'rgba(44, 74, 127, 0.15)' :
     highlight === 'red' ? 'rgba(168, 50, 43, 0.12)' : 'transparent';
+
+  // Fluid mode: card fills container, uses aspect-ratio
+  if (fluid) {
+    return (
+      <div className="dragon-card-interactive" style={{
+        width: '100%', aspectRatio: '5 / 7', background: bg, borderRadius: 5,
+        border: `${highlight ? 2 : 1}px solid ${border}`,
+        position: 'relative', overflow: 'hidden',
+        boxShadow: locked
+          ? '0 2px 8px rgba(201, 162, 39, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.3)'
+          : '0 1px 3px rgba(0, 0, 0, 0.08)',
+        animation: pulseAnim, transition: 'all 0.3s ease',
+      }}>
+        {tintOverlay !== 'transparent' && (
+          <div style={{ position: 'absolute', inset: 0, background: tintOverlay, pointerEvents: 'none' }} />
+        )}
+        <div style={{
+          position: 'absolute', left: '5%', bottom: '5%', width: '8%',
+          height: `calc(${barHeight * 100}% - 10%)`,
+          background: C.ink, opacity: 0.85,
+        }} />
+        <div className="font-serif" style={{
+          position: 'absolute', top: '5%', right: '8%',
+          fontWeight: 700, fontSize: 'clamp(12px, 3.5cqi, 30px)', color: C.ink, letterSpacing: '-0.02em',
+        }}>
+          {value}
+        </div>
+        <div style={{
+          position: 'absolute', bottom: '6%', right: '8%',
+          width: 'clamp(7px, 2cqi, 12px)', height: 'clamp(7px, 2cqi, 12px)',
+          borderRadius: '50%', border: `2px solid ${suitColor}`,
+        }} />
+        {locked && (
+          <div className="font-sans" style={{
+            position: 'absolute', bottom: '5%', left: '22%',
+            fontSize: 'clamp(5px, 1.2cqi, 7px)', fontWeight: 600,
+            letterSpacing: '0.1em', color: C.ink, opacity: 0.7,
+          }}>
+            LOCKED
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const s = size || (mobile ? { w: 38, h: 54, fs: 14, bar: 5 } : (compact ? { w: 64, h: 90, fs: 24, bar: 9 } : { w: 80, h: 112, fs: 30, bar: 11 }));
 
@@ -1041,7 +1083,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = 
 const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, showIndex = true }) => {
   const mobile = useIsMobile(768);
   return (
-    <div className="lane-row" style={{ display: 'flex', gap: mobile ? 2 : (compact ? 4 : 5), justifyContent: 'center', flexWrap: 'nowrap', overflowX: mobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', paddingBottom: mobile ? 4 : 0 }}>
+    <div className="lane-row" style={{ display: 'flex', gap: 'clamp(2px, 0.5vw, 6px)', justifyContent: 'center', flexWrap: 'nowrap', containerType: 'inline-size', maxWidth: 900, margin: '0 auto' }}>
       {lane.map((card, idx) => {
         const highlight = highlights[idx];
         const clickable = clickablePredicate ? clickablePredicate(idx, card) : false;
@@ -1051,12 +1093,13 @@ const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, show
             onClick={clickable ? () => onCardClick(idx) : undefined}
             style={{
               position: 'relative', cursor: clickable ? 'pointer' : 'default',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: mobile ? 2 : 3,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: mobile ? 2 : 3, flex: '1 1 0', minWidth: 0,
             }}
           >
-            <DragonCard value={card.value} locked={card.locked} highlight={highlight} compact={compact} mobile={mobile} />
+            <DragonCard value={card.value} locked={card.locked} highlight={highlight} fluid />
             {showIndex && (
-              <span className="font-sans" style={{ fontSize: mobile ? 7 : 9, color: C.soft, letterSpacing: '0.08em' }}>
+              <span className="font-sans" style={{ fontSize: 'clamp(6px, 1.2vw, 9px)', color: C.soft, letterSpacing: '0.08em' }}>
                 {idx + 1}
               </span>
             )}
