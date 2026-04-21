@@ -1152,7 +1152,7 @@ const Hero = ({ onPlayClick }) => (
     <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 80, alignItems: 'center' }}>
         <div style={{ animation: 'fadeUp 0.8s ease-out' }}>
-          <Eyebrow color={C.gold}>A Board Game That Teaches STEM Concepts</Eyebrow>
+          <Eyebrow color={C.gold}>A Board Game That Teaches Algorithms</Eyebrow>
           <h1 className="font-serif" style={{
             fontSize: 108, fontWeight: 500, color: C.ink, lineHeight: 0.95,
             letterSpacing: '-0.03em', margin: '24px 0 32px',
@@ -1239,7 +1239,7 @@ const ProblemSection = () => (
     <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
       <Eyebrow>The Problem</Eyebrow>
       <SerifHeading size={54}>
-        STEM concepts are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
+        Algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
       </SerifHeading>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
         <DecorativeRule width={120} />
@@ -1260,7 +1260,7 @@ const ProblemSection = () => (
           {
             stat: '2\u00D7',
             label: 'better learning gains',
-            body: 'Students who physically act out STEM concepts score roughly twice as high as those in passive lectures.',
+            body: 'Students who physically act out algorithms score roughly twice as high as those in passive lectures.',
           },
           {
             stat: '28',
@@ -2762,62 +2762,21 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
 
 const Footer = () => (
   <footer style={{
-    background: C.dark, color: C.cream, padding: '80px 32px 40px',
+    background: C.dark, color: C.cream, padding: '32px',
   }}>
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 56 }}>
-        <div>
-          <div className="font-serif" style={{
-            fontSize: 28, fontWeight: 500, marginBottom: 12,
-            letterSpacing: '-0.01em',
-          }}>
-            Stack Attack
-          </div>
-          <p className="font-serif" style={{
-            fontSize: 15, fontStyle: 'italic', lineHeight: 1.6,
-            color: 'rgba(244, 235, 214, 0.7)', maxWidth: 340,
-          }}>
-            A sorting algorithm board game for the classroom, the kitchen table, and anywhere people want to learn by doing.
-          </p>
-        </div>
-        {[
-          { title: 'Product', links: ['The Game', 'How it Works', 'Expansions', 'Digital'] },
-          { title: 'For You', links: ['Teachers', 'Parents', 'Students', 'Designers'] },
-          { title: 'Company', links: ['About', 'Press', 'Contact', 'Careers'] },
-        ].map((col, i) => (
-          <div key={i}>
-            <div className="font-mono" style={{
-              fontSize: 10, color: C.gold, letterSpacing: '0.2em',
-              textTransform: 'uppercase', fontWeight: 600, marginBottom: 16,
-            }}>
-              {col.title}
-            </div>
-            {col.links.map(link => (
-              <div key={link} className="font-sans" style={{
-                fontSize: 13, padding: '6px 0',
-                color: 'rgba(244, 235, 214, 0.75)',
-                cursor: 'pointer', transition: 'color 0.2s',
-              }}>
-                {link}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div style={{
-        paddingTop: 32, borderTop: '1px solid rgba(244, 235, 214, 0.15)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    <div style={{
+      maxWidth: 1200, margin: '0 auto',
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    }}>
+      <div className="font-mono" style={{
+        fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
       }}>
-        <div className="font-mono" style={{
-          fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
-        }}>
-          © 2026 STACK ATTACK · ALL SCHOOLS RESERVED
-        </div>
-        <div className="font-mono" style={{
-          fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
-        }}>
-          DESIGNED FOR LEARNING · BUILT FOR PLAY
-        </div>
+        © 2026 STACK ATTACK
+      </div>
+      <div className="font-mono" style={{
+        fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
+      }}>
+        DESIGNED FOR LEARNING · BUILT FOR PLAY
       </div>
     </div>
   </footer>
