@@ -952,6 +952,9 @@ const GlobalStyles = () => (
       .howto-box { padding: 16px 12px !important; }
       .player-panel { padding: 12px !important; }
       .lane-row { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+      .player-panel { padding: 12px !important; }
+      .stats-row { flex-wrap: wrap !important; gap: 8px !important; }
+      .stats-row > div { min-width: auto !important; flex: 1 1 auto !important; }
       .serif-desc { font-size: 16px !important; max-width: 100% !important; }
       .section-heading { font-size: 28px !important; }
       .section-subhead { font-size: 24px !important; }
@@ -968,7 +971,7 @@ const GlobalStyles = () => (
 // SHARED VISUAL COMPONENTS
 // ============================================================================
 
-const DragonCard = ({ value, locked, highlight, compact = false, size }) => {
+const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = false }) => {
   const barHeight = Math.max(0.1, Math.min(1, value / 50));
   const suitColor =
     value <= 10 ? C.cobalt :
@@ -991,7 +994,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size }) => {
     highlight === 'blue' ? 'rgba(44, 74, 127, 0.15)' :
     highlight === 'red' ? 'rgba(168, 50, 43, 0.12)' : 'transparent';
 
-  const s = size || (compact ? { w: 48, h: 68, fs: 18, bar: 7 } : { w: 64, h: 90, fs: 24, bar: 9 });
+  const s = size || (mobile ? { w: 36, h: 52, fs: 14, bar: 5 } : (compact ? { w: 48, h: 68, fs: 18, bar: 7 } : { w: 64, h: 90, fs: 24, bar: 9 }));
 
   return (
     <div className="dragon-card-interactive" style={{
@@ -1036,8 +1039,9 @@ const DragonCard = ({ value, locked, highlight, compact = false, size }) => {
 };
 
 const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, showIndex = true }) => {
+  const mobile = useIsMobile(768);
   return (
-    <div className="lane-row" style={{ display: 'flex', gap: compact ? 4 : 5, justifyContent: 'center', flexWrap: 'nowrap' }}>
+    <div className="lane-row" style={{ display: 'flex', gap: mobile ? 3 : (compact ? 4 : 5), justifyContent: 'center', flexWrap: 'nowrap' }}>
       {lane.map((card, idx) => {
         const highlight = highlights[idx];
         const clickable = clickablePredicate ? clickablePredicate(idx, card) : false;
@@ -1047,19 +1051,19 @@ const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, show
             onClick={clickable ? () => onCardClick(idx) : undefined}
             style={{
               position: 'relative', cursor: clickable ? 'pointer' : 'default',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: mobile ? 2 : 3,
             }}
           >
-            <DragonCard value={card.value} locked={card.locked} highlight={highlight} compact={compact} />
+            <DragonCard value={card.value} locked={card.locked} highlight={highlight} compact={compact} mobile={mobile} />
             {showIndex && (
-              <span className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.08em' }}>
+              <span className="font-sans" style={{ fontSize: mobile ? 7 : 9, color: C.soft, letterSpacing: '0.08em' }}>
                 {idx + 1}
               </span>
             )}
             {clickable && (
               <div style={{
                 position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
-                fontSize: 14, color: C.gold,
+                fontSize: mobile ? 10 : 14, color: C.gold,
                 animation: 'shimmer 1.2s ease-in-out infinite',
               }}>▼</div>
             )}
@@ -1733,6 +1737,7 @@ const TallyStrip = ({ label, value, max = 30, color = C.ink }) => {
 };
 
 const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenarioMins, compact }) => {
+  const mobile = useIsMobile(768);
   const p = state.players[playerIdx];
   const isActive = playerIdx === activePlayerIdx;
   const theoreticalMin = scenarioMins[p.school];
@@ -1781,7 +1786,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <div className="stats-row" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div style={{ minWidth: 80 }}>
             <TallyStrip label="Comp" value={p.comparisons} max={Math.max(30, theoreticalMin * 1.5)} />
           </div>
@@ -2044,7 +2049,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
       {/* Partition tray */}
       {showTray && p.pivotIdx !== null && (blueCards.length > 0 || redCards.length > 0) && (
         <div style={{
-          marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2,
+          marginTop: 16, display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: 2,
           border: `1px solid ${C.rule}`,
         }}>
           <div style={{ background: 'rgba(44, 74, 127, 0.06)', padding: '10px 14px', minHeight: 80 }}>
@@ -2053,7 +2058,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
               textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
             }}>&lt; Pivot (Blue)</div>
             <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-              {blueCards.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+              {blueCards.map(c => <DragonCard key={c.id} value={c.value} compact mobile={mobile} />)}
             </div>
           </div>
           <div style={{ background: 'rgba(168, 50, 43, 0.05)', padding: '10px 14px', minHeight: 80 }}>
@@ -2062,7 +2067,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
               textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
             }}>≥ Pivot (Red)</div>
             <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-              {redCards.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+              {redCards.map(c => <DragonCard key={c.id} value={c.value} compact mobile={mobile} />)}
             </div>
           </div>
         </div>
@@ -2084,10 +2089,10 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
             </div>
           </div>
           <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-            {p.mergeState.merged.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+            {p.mergeState.merged.map(c => <DragonCard key={c.id} value={c.value} compact mobile={mobile} />)}
           </div>
           {/* Show remaining from each side */}
-          <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 10, color: C.soft }}>
+          <div style={{ display: 'flex', gap: mobile ? 8 : 16, marginTop: 8, fontSize: 10, color: C.soft, flexWrap: 'wrap' }}>
             <span className="font-mono">
               Left remaining: [{p.mergeState.leftCards.slice(p.mergeState.leftPos).map(c => c.value).join(', ') || 'empty'}]
             </span>
@@ -2101,7 +2106,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
       {/* Action area */}
       {!p.finished && (
         <div style={{
-          marginTop: 16, padding: '16px 20px',
+          marginTop: 16, padding: mobile ? '12px' : '16px 20px',
           background: C.paper, border: `1px solid ${C.rule}`,
         }}>
           <ActionArea state={p} dispatch={dispatch} playerIdx={playerIdx} />
@@ -2629,7 +2634,7 @@ const DemoPlay = ({ initial, onReset }) => {
   const deckLabel = state.deckSize === 6 ? 'Easy' : state.deckSize === 10 ? 'Hard' : state.deckSize === 12 ? 'Expert' : 'Normal';
 
   return (
-    <div style={{ padding: '40px 40px 48px', position: 'relative' }}>
+    <div className="setup-container" style={{ padding: '40px 40px 48px', position: 'relative' }}>
 
       {/* Top bar */}
       <div style={{
