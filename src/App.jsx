@@ -417,7 +417,7 @@ function playerReducer(state, action) {
       let nextCompare = cardIdx + 1;
       if (nextCompare === state.pivotIdx) nextCompare += 1;
       const newComparisons = state.comparisons + 1;
-      const logEntry = { type: 'action', text: `P${action.playerNum}: ${cardVal} → ${toBlue ? 'BLUE' : 'RED'}.` };
+      const logEntry = { type: 'action', text: `P${action.playerNum}: ${cardVal} → ${toBlue ? 'LEFT' : 'RIGHT'}.` };
       if (nextCompare >= end) {
         return {
           ...state,
@@ -2056,7 +2056,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
             <div className="font-sans" style={{
               fontSize: 9, color: C.cobalt, letterSpacing: '0.15em',
               textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
-            }}>&lt; Pivot (Blue)</div>
+            }}>&lt; Pivot (Left)</div>
             <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
               {blueCards.map(c => <DragonCard key={c.id} value={c.value} compact mobile={mobile} />)}
             </div>
@@ -2065,7 +2065,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
             <div className="font-sans" style={{
               fontSize: 9, color: C.crimson, letterSpacing: '0.15em',
               textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
-            }}>≥ Pivot (Red)</div>
+            }}>≥ Pivot (Right)</div>
             <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
               {redCards.map(c => <DragonCard key={c.id} value={c.value} compact mobile={mobile} />)}
             </div>
