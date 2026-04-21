@@ -1,7 +1,7 @@
 import React, { useReducer, useState, useRef, useCallback } from 'react';
 
 // ============================================================================
-// GAME LOGIC (from previous iteration, plus 2-player support)
+// GAME LOGIC
 // ============================================================================
 
 // Generate n unique random integers in [min, max]
@@ -236,15 +236,10 @@ const initialState = (school, mode, deckSize = 8) => {
     deckSize,
     deck,
     mins,
-    activePlayer: 0,
-    players: mode === '2player'
-      ? [makePlayerState(deck, 'bubble'), makePlayerState(deck, 'quick')]
-      : [makePlayerState(deck, school)],
+    players: [makePlayerState(deck, school)],
     log: [{
       type: 'start',
-      text: mode === '2player'
-        ? `Random deck. P1: Bubble Monks vs P2: Quick Order.`
-        : `Random deck. School: ${SCHOOL_NAMES[school] || school}.`,
+      text: `Random deck. School: ${SCHOOL_NAMES[school] || school}.`,
     }],
   };
 };
@@ -813,7 +808,7 @@ function rootReducer(state, action) {
     return initialState(school, action.mode || state.mode, action.deckSize || state.deckSize || 8);
   }
 
-  const pIdx = action.playerIdx !== undefined ? action.playerIdx : state.activePlayer;
+  const pIdx = 0;
   const newPlayer = playerReducer(state.players[pIdx], { ...action, playerNum: pIdx + 1 });
   const newPlayers = [...state.players];
   newPlayers[pIdx] = newPlayer;
@@ -828,21 +823,7 @@ function rootReducer(state, action) {
     delete newPlayer._logEntries;
   }
 
-  // In 2P mode, switch active player after certain actions (turn-based)
-  let newActivePlayer = state.activePlayer;
-  if (state.mode === '2player') {
-    // Switch after a completed primitive (BUBBLE_EXECUTE, QUICK_EXECUTE, QUICK_SEAL, QUICK_CHOOSE_PIVOT)
-    const switches = ['BUBBLE_EXECUTE', 'QUICK_EXECUTE', 'QUICK_SEAL', 'INSERTION_EXECUTE', 'SELECTION_EXECUTE', 'SELECTION_SWAP', 'MERGE_EXECUTE'];
-    if (switches.includes(action.type) && !newPlayer.pendingAction) {
-      // Find next not-finished player
-      let next = (pIdx + 1) % 2;
-      if (!newPlayers[next].finished) {
-        newActivePlayer = next;
-      }
-    }
-  }
-
-  return { ...state, players: newPlayers, activePlayer: newActivePlayer, log: newLog };
+  return { ...state, players: newPlayers, log: newLog };
 }
 
 // ============================================================================
@@ -1198,19 +1179,7 @@ const Hero = ({ onPlayClick }) => (
               How it works →
             </a>
           </div>
-          <div style={{ marginTop: 64, display: 'flex', gap: 48 }}>
-            {[
-              ['2–6', 'Players'],
-              ['12+', 'Ages'],
-              ['20 min', 'Per round'],
-              ['7', 'Sorting schools'],
-            ].map(([n, l]) => (
-              <div key={l}>
-                <div className="font-serif" style={{ fontSize: 32, fontWeight: 500, color: C.ink, letterSpacing: '-0.02em' }}>{n}</div>
-                <div className="font-mono" style={{ fontSize: 10, color: C.soft, letterSpacing: '0.18em', textTransform: 'uppercase', marginTop: 2 }}>{l}</div>
-              </div>
-            ))}
-          </div>
+
         </div>
         {/* Hero visual: floating dragon cards */}
         <div style={{ position: 'relative', height: 560, animation: 'fadeIn 1.2s ease-out' }}>
@@ -1577,7 +1546,7 @@ const DemoSetup = ({ onStart }) => {
     },
   };
 
-  const info = howToPlay[mode === '2player' ? 'bubble' : school];
+  const info = howToPlay[school];
 
   return (
     <div style={{ padding: '48px 56px' }}>
@@ -1596,11 +1565,10 @@ const DemoSetup = ({ onStart }) => {
         }}>
           1. Mode
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
           {[
             { key: 'tutorial', label: 'Tutorial', desc: 'Hints tell you what to do. For learning.' },
             { key: 'practice', label: 'Solo Practice', desc: 'You decide. Wrong calls = penalty.' },
-            { key: '2player', label: '2-Player Hot-Seat', desc: 'Bubble vs. Quick on shared table.' },
           ].map(m => (
             <button key={m.key} onClick={() => setMode(m.key)} style={{
               background: mode === m.key ? C.ink : 'transparent',
@@ -1615,8 +1583,7 @@ const DemoSetup = ({ onStart }) => {
         </div>
       </div>
 
-      {mode !== '2player' && (
-        <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 32 }}>
           <div className="font-sans" style={{
             fontSize: 11, color: C.soft, letterSpacing: '0.18em',
             textTransform: 'uppercase', marginBottom: 12, fontWeight: 600,
@@ -1647,7 +1614,6 @@ const DemoSetup = ({ onStart }) => {
             ))}
           </div>
         </div>
-      )}
 
       {/* Deck size */}
       <div style={{ marginBottom: 32 }}>
@@ -1655,7 +1621,7 @@ const DemoSetup = ({ onStart }) => {
           fontSize: 11, color: C.soft, letterSpacing: '0.18em',
           textTransform: 'uppercase', marginBottom: 12, fontWeight: 600,
         }}>
-          {mode !== '2player' ? '3' : '2'}. Difficulty (cards)
+          3. Difficulty (cards)
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           {[
@@ -1687,7 +1653,7 @@ const DemoSetup = ({ onStart }) => {
           fontSize: 10, color: info.color, letterSpacing: '0.15em',
           fontWeight: 600, marginBottom: 12,
         }}>
-          HOW TO PLAY — {SCHOOL_NAMES[mode === '2player' ? 'bubble' : school].toUpperCase()}
+          HOW TO PLAY — {SCHOOL_NAMES[school].toUpperCase()}
         </div>
         <ol style={{ margin: 0, paddingLeft: 20 }}>
           {info.steps.map((step, i) => (
@@ -1760,12 +1726,8 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
 
   return (
     <div style={{
-      border: `1px solid ${isActive && mode === '2player' ? playerColor : C.rule}`,
-      borderLeftWidth: mode === '2player' ? 4 : 1,
-      borderLeftColor: playerColor,
-      background: isActive && mode === '2player' ? C.paper : 'transparent',
-      padding: compact ? 20 : 24,
-      opacity: mode === '2player' && !isActive && !p.finished ? 0.55 : 1,
+      border: `1px solid ${C.rule}`,
+      padding: 24,
       transition: 'all 0.3s ease',
       position: 'relative',
     }}>
@@ -1775,18 +1737,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
         marginBottom: 16, flexWrap: 'wrap', gap: 12,
       }}>
         <div>
-          {mode === '2player' && (
-            <Eyebrow color={playerColor}>Player {playerIdx + 1} · {playerName}</Eyebrow>
-          )}
-          {mode !== '2player' && <Eyebrow color={playerColor}>{playerName}</Eyebrow>}
-          {isActive && mode === '2player' && !p.finished && (
-            <div className="font-mono" style={{
-              fontSize: 9, color: playerColor, letterSpacing: '0.2em',
-              marginTop: 4, fontWeight: 600,
-            }}>
-              → YOUR TURN
-            </div>
-          )}
+          <Eyebrow color={playerColor}>{playerName}</Eyebrow>
           {p.finished && (
             <div className="font-mono" style={{
               fontSize: 9, color: C.emerald, letterSpacing: '0.2em',
@@ -1990,13 +1941,11 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
         lane={p.lane}
         highlights={p.highlights}
         onCardClick={(idx) => {
-          if (!isActive && mode === '2player') return;
           if (p.school === 'quick' && p.quickPhase === 'choose_pivot') {
             dispatch({ type: 'QUICK_CHOOSE_PIVOT', idx, playerIdx });
           }
         }}
         clickablePredicate={(idx, card) => {
-          if (!isActive && mode === '2player') return false;
           if (p.school !== 'quick' || p.quickPhase !== 'choose_pivot') return false;
           if (p.finished) return false;
           const [s, e] = p.activeRange;
@@ -2116,7 +2065,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
       )}
 
       {/* Action area */}
-      {(!p.finished && (isActive || mode !== '2player')) && (
+      {!p.finished && (
         <div style={{
           marginTop: 16, padding: '16px 20px',
           background: C.paper, border: `1px solid ${C.rule}`,
@@ -2655,7 +2604,7 @@ const DemoPlay = ({ initial, onReset }) => {
       }}>
         <div>
           <Eyebrow>
-            {state.mode === 'tutorial' ? 'Tutorial' : state.mode === 'practice' ? 'Solo Practice' : '2-Player Hot-Seat'}
+            {state.mode === 'tutorial' ? 'Tutorial' : 'Solo Practice'}
             {' · '}
             {state.deckSize} Cards ({deckLabel})
           </Eyebrow>
@@ -2683,23 +2632,16 @@ const DemoPlay = ({ initial, onReset }) => {
       )}
 
       {/* Player panels */}
-      <div style={{
-        display: state.mode === '2player' ? 'grid' : 'block',
-        gridTemplateColumns: state.mode === '2player' ? '1fr 1fr' : '1fr',
-        gap: 14,
-      }}>
-        {state.players.map((_, idx) => (
-          <PlayerPanel
-            key={idx}
-            state={state}
-            dispatch={dispatch}
-            playerIdx={idx}
-            activePlayerIdx={state.activePlayer}
-            mode={state.mode}
-            scenarioMins={state.mins}
-            compact={state.mode === '2player'}
-          />
-        ))}
+      <div>
+        <PlayerPanel
+          state={state}
+          dispatch={dispatch}
+          playerIdx={0}
+          activePlayerIdx={0}
+          mode={state.mode}
+          scenarioMins={state.mins}
+          compact={false}
+        />
       </div>
 
       {/* Victory screen */}
@@ -2712,41 +2654,26 @@ const DemoPlay = ({ initial, onReset }) => {
           <Eyebrow color={C.gold}>Round Complete</Eyebrow>
 
           {/* Scores + Stars */}
-          <div style={{ display: 'grid', gridTemplateColumns: state.mode === '2player' ? '1fr 1fr' : '1fr', gap: 24, marginTop: 16 }}>
-            {state.players.map((p, i) => {
-              const score = scores[i];
-              const mins = state.mins[p.school];
-              return (
-                <div key={i} style={{ textAlign: state.mode === '2player' ? 'center' : 'left' }}>
-                  <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>
-                    {state.mode === '2player' ? `PLAYER ${i + 1} — ${SCHOOL_NAMES[p.school]}` : 'YOUR SCORE'}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginTop: 8, justifyContent: state.mode === '2player' ? 'center' : 'flex-start' }}>
-                    <div className="font-serif" style={{
-                      fontSize: 56, fontWeight: 500, letterSpacing: '-0.02em', lineHeight: 1,
-                    }}>{score}</div>
-                  </div>
-                  <div className="font-sans" style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
-                    {p.comparisons} comp · {p.swaps} swap · min {mins}
-                  </div>
-                  {score >= 100 && (
-                    <div className="font-mono" style={{
-                      fontSize: 10, color: C.emerald, letterSpacing: '0.15em',
-                      marginTop: 4, fontWeight: 600,
-                    }}>✨ PERFECT — Matched theoretical minimum!</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 2-player winner */}
-          {state.mode === '2player' && (() => {
-            const winner = scores[0] === scores[1] ? 'Tie' : scores[0] > scores[1] ? 'P1 wins' : 'P2 wins';
+          {(() => {
+            const score = scores[0];
+            const mins = state.mins[state.players[0].school];
             return (
-              <div style={{ textAlign: 'center', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(244,235,214,0.2)' }}>
-                <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>EFFICIENCY MEDAL</div>
-                <div className="font-serif" style={{ fontSize: 32, fontWeight: 500, marginTop: 6 }}>{winner}</div>
+              <div style={{ marginTop: 16 }}>
+                <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>YOUR SCORE</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginTop: 8 }}>
+                  <div className="font-serif" style={{
+                    fontSize: 56, fontWeight: 500, letterSpacing: '-0.02em', lineHeight: 1,
+                  }}>{score}</div>
+                </div>
+                <div className="font-sans" style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                  {state.players[0].comparisons} comp · {state.players[0].swaps} swap · min {mins}
+                </div>
+                {score >= 100 && (
+                  <div className="font-mono" style={{
+                    fontSize: 10, color: C.emerald, letterSpacing: '0.15em',
+                    marginTop: 4, fontWeight: 600,
+                  }}>✨ PERFECT — Matched theoretical minimum!</div>
+                )}
               </div>
             );
           })()}
