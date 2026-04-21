@@ -994,7 +994,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = 
     highlight === 'blue' ? 'rgba(44, 74, 127, 0.15)' :
     highlight === 'red' ? 'rgba(168, 50, 43, 0.12)' : 'transparent';
 
-  const s = size || (mobile ? { w: 44, h: 62, fs: 16, bar: 6 } : (compact ? { w: 64, h: 90, fs: 24, bar: 9 } : { w: 80, h: 112, fs: 30, bar: 11 }));
+  const s = size || (mobile ? { w: 38, h: 54, fs: 14, bar: 5 } : (compact ? { w: 64, h: 90, fs: 24, bar: 9 } : { w: 80, h: 112, fs: 30, bar: 11 }));
 
   return (
     <div className="dragon-card-interactive" style={{
@@ -1041,7 +1041,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = 
 const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, showIndex = true }) => {
   const mobile = useIsMobile(768);
   return (
-    <div className="lane-row" style={{ display: 'flex', gap: mobile ? 3 : (compact ? 4 : 5), justifyContent: 'center', flexWrap: 'nowrap' }}>
+    <div className="lane-row" style={{ display: 'flex', gap: mobile ? 2 : (compact ? 4 : 5), justifyContent: 'center', flexWrap: 'nowrap', overflowX: mobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', paddingBottom: mobile ? 4 : 0 }}>
       {lane.map((card, idx) => {
         const highlight = highlights[idx];
         const clickable = clickablePredicate ? clickablePredicate(idx, card) : false;
