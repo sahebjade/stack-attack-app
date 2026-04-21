@@ -1253,7 +1253,7 @@ const Nav = ({ onPlayClick }) => (
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-        {['The Game', 'How it Works', 'Demo'].map(link => (
+        {['The Game', 'How it Works', 'Play Now'].map(link => (
           <a
             key={link}
             href={`#${link.toLowerCase().replace(/\s/g, '-')}`}
@@ -1298,7 +1298,7 @@ const Hero = ({ onPlayClick }) => (
             doing — not by reading. Played by middle schoolers. Loved by their parents.
           </p>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            <Button onClick={onPlayClick}>Play the Demo</Button>
+            <Button onClick={onPlayClick}>Play Now</Button>
             <a href="#how-it-works" style={{
               fontFamily: 'Inter, sans-serif', fontSize: 12, color: C.ink,
               letterSpacing: '0.15em', textTransform: 'uppercase', textDecoration: 'none',
@@ -3102,10 +3102,10 @@ const DemoPlay = ({ initial, onReset }) => {
 
 const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => {
   return (
-    <section id="demo" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
+    <section id="play-now" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <Eyebrow color={C.gold}>Playable Demo</Eyebrow>
+          <Eyebrow color={C.gold}>Play Now</Eyebrow>
           <SerifHeading size={54} color={C.cream}>
             Try it <span style={{ fontStyle: 'italic' }}>now.</span>
           </SerifHeading>
@@ -3132,61 +3132,6 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
     </section>
   );
 });
-
-const TestimonialsSection = () => (
-  <section style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}` }}>
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: 64 }}>
-        <Eyebrow>What They're Saying</Eyebrow>
-        <SerifHeading size={48} italic>Teachers. Parents. Students.</SerifHeading>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32 }}>
-        {[
-          {
-            quote: "My seventh-graders explained Big-O notation to me over pizza. I've been teaching CS for twelve years — that's never happened before.",
-            name: 'M. Chen',
-            role: 'Middle School CS Teacher',
-          },
-          {
-            quote: "We play on family game night. My eleven-year-old now argues with her older brother about pivot strategy. I have no complaints.",
-            name: 'R. Okonkwo',
-            role: 'Parent',
-          },
-          {
-            quote: "I failed my first algorithms exam in college. After three rounds of this with my nephew, I finally understood what merge sort actually does.",
-            name: 'J. Alvarez',
-            role: 'Software Developer',
-          },
-        ].map((t, i) => (
-          <div key={i} style={{
-            background: C.cream, padding: 36, border: `1px solid ${C.rule}`,
-            position: 'relative',
-          }}>
-            <div className="font-serif" style={{
-              position: 'absolute', top: 8, left: 16,
-              fontSize: 80, color: C.gold, lineHeight: 1, opacity: 0.4,
-              fontWeight: 600,
-            }}>"</div>
-            <p className="font-serif" style={{
-              fontSize: 17, color: C.ink, lineHeight: 1.55, marginTop: 20,
-              fontStyle: 'italic', position: 'relative',
-            }}>
-              {t.quote}
-            </p>
-            <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${C.rule}` }}>
-              <div className="font-sans" style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>
-                — {t.name}
-              </div>
-              <div className="font-mono" style={{ fontSize: 10, color: C.soft, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 4 }}>
-                {t.role}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-);
 
 const Footer = () => (
   <footer style={{
@@ -3276,7 +3221,6 @@ export default function App() {
           initialConfig={demoConfig}
           onConfigReset={(cfg) => setDemoConfig(cfg)}
         />
-        <TestimonialsSection />
       </main>
       <Footer />
     </div>
