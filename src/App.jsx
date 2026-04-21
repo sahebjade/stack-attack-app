@@ -1200,7 +1200,7 @@ const Button = ({ children, onClick, variant = 'primary', disabled, small = fals
 
 const Nav = ({ onPlayClick }) => (
   <nav style={{
-    position: 'sticky', top: 0, zIndex: 50,
+    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
     background: 'rgba(244, 235, 214, 0.92)',
     backdropFilter: 'blur(8px)',
     borderBottom: `1px solid ${C.rule}`,
@@ -2896,7 +2896,7 @@ export default function App() {
     <div className="grain-bg" style={{ position: 'relative', overflow: 'hidden' }}>
       <GlobalStyles />
       <Nav onPlayClick={scrollToDemo} />
-      <main style={{ position: 'relative', zIndex: 1 }}>
+      <main style={{ position: 'relative', zIndex: 1, paddingTop: 64 }}>
         <Hero onPlayClick={scrollToDemo} />
         <ProblemSection />
         <HowItWorks />
