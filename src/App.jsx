@@ -994,7 +994,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = 
     highlight === 'blue' ? 'rgba(44, 74, 127, 0.15)' :
     highlight === 'red' ? 'rgba(168, 50, 43, 0.12)' : 'transparent';
 
-  const s = size || (mobile ? { w: 44, h: 62, fs: 16, bar: 6 } : (compact ? { w: 48, h: 68, fs: 18, bar: 7 } : { w: 64, h: 90, fs: 24, bar: 9 }));
+  const s = size || (mobile ? { w: 44, h: 62, fs: 16, bar: 6 } : (compact ? { w: 64, h: 90, fs: 24, bar: 9 } : { w: 80, h: 112, fs: 30, bar: 11 }));
 
   return (
     <div className="dragon-card-interactive" style={{
