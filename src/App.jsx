@@ -1398,19 +1398,19 @@ const ProblemSection = () => (
       }}>
         {[
           {
-            stat: '93%',
-            label: 'of CS students',
-            body: "can't correctly describe Quick Sort one week after their first lecture.",
+            stat: '0.8',
+            label: "effect size (Cohen\u2019s d)",
+            body: "When students physically act out STEM concepts vs. passive lecture \u2014 a \u201Clarge\u201D advantage by statistical standards.",
           },
           {
-            stat: '4 min',
-            label: 'to teach',
-            body: 'a pencil-and-paper algorithm vs. 45 minutes for the same concept in slides.',
+            stat: '28',
+            label: 'studies reviewed',
+            body: 'in a systematic review found positive learning outcomes for hands-on "unplugged" computer-science activities.',
           },
           {
-            stat: '8×',
-            label: 'higher retention',
-            body: 'when students physically enact an algorithm versus watching it animate.',
+            stat: '4 yrs',
+            label: 'of classroom trials',
+            body: "confirmed technology-enhanced embodied learning significantly improves students\u2019 retention and memory.",
           },
         ].map((item, i) => (
           <div key={i}>
@@ -1429,8 +1429,10 @@ const ProblemSection = () => (
           </div>
         ))}
       </div>
-      <div className="font-mono" style={{ fontSize: 9, color: C.soft, marginTop: 48, letterSpacing: '0.15em' }}>
-        * Figures illustrative. See our research page for methodology.
+      <div className="font-mono" style={{ fontSize: 9, color: C.soft, marginTop: 48, letterSpacing: '0.1em', lineHeight: 1.8 }}>
+        Sources: Johnson-Glenberg et al. (2014) <span style={{ fontStyle: 'italic' }}>J. Educational Psychology</span>, 502 citations ·
+        Battal &amp; Afacan Adanır (2021) <span style={{ fontStyle: 'italic' }}>J. Educational Technology &amp; Society</span>, 76 citations ·
+        Kosmas &amp; Zaphiris (2023) <span style={{ fontStyle: 'italic' }}>Education &amp; Information Technologies</span>, 52 citations
       </div>
     </div>
   </section>
