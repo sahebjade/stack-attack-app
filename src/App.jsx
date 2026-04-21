@@ -1468,8 +1468,8 @@ function getTutorialHint(state, activePlayerIdx) {
     if (p.pendingAction) {
       const { cardVal, pivotVal } = p.pendingAction;
       return cardVal < pivotVal
-        ? `${cardVal} is less than pivot ${pivotVal} → click "Yes… → Left".`
-        : `${cardVal} is not less than pivot ${pivotVal} → click "No… → Right".`;
+        ? `${cardVal} is less than pivot ${pivotVal} → click "${cardVal} → Left".`
+        : `${cardVal} is not less than pivot ${pivotVal} → click "${cardVal} → Right".`;
     }
     if (p.quickPhase === 'choose_pivot') return `Click one of the cards with a ▼ arrow to pick it as your pivot.`;
     if (p.quickPhase === 'comparing') return `Click "Compare Next Card" to check the next card against the pivot.`;
@@ -2247,10 +2247,10 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
             </div>
             <ComparePrompt leftLabel="THIS CARD" leftVal={cardVal} rightLabel="PIVOT" rightVal={pivotVal}>
               <Button variant="keep" small onClick={() => dispatch({ type: 'QUICK_EXECUTE', toBlue: true, playerIdx })}>
-                Yes, {cardVal} &lt; {pivotVal} → Left
+                {cardVal} → LEFT (&lt; {pivotVal})
               </Button>
               <Button variant="swap" small onClick={() => dispatch({ type: 'QUICK_EXECUTE', toBlue: false, playerIdx })}>
-                No, {cardVal} ≥ {pivotVal} → Right
+                {cardVal} → RIGHT (≥ {pivotVal})
               </Button>
             </ComparePrompt>
           </div>
