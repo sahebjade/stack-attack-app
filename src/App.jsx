@@ -1203,21 +1203,7 @@ const Hero = ({ onPlayClick }) => (
               <DragonCard value={card.v} size={{ w: 140, h: 200, fs: 48, bar: 16 }} />
             </div>
           ))}
-          {/* Decorative stamp */}
-          <div style={{
-            position: 'absolute', bottom: 20, right: 20,
-            width: 100, height: 100, border: `2px solid ${C.gold}`,
-            borderRadius: '50%', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', transform: 'rotate(-12deg)',
-            animation: 'fadeIn 1.5s ease-out 0.8s backwards',
-          }}>
-            <div className="font-mono" style={{
-              fontSize: 9, color: C.gold, letterSpacing: '0.2em',
-              textAlign: 'center', lineHeight: 1.3, fontWeight: 600,
-            }}>
-              ALGO-<br/>KNIGHT<br/>CERT<br/>v2.0
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -1599,16 +1585,16 @@ const DemoSetup = ({ onStart }) => {
               { key: 'merge', name: 'Merge Guild', tagline: 'Divide & conquer.', bigO: 'O(n log n)', color: C.cobalt },
             ].map(s => (
                 <button key={s.key} onClick={() => setSchool(s.key)} style={{
-                  background: school === s.key ? C.cream : 'transparent',
+                  background: school === s.key ? C.ink : 'transparent',
                   border: `1px solid ${school === s.key ? s.color : C.rule}`,
                   borderLeft: `4px solid ${s.color}`,
                   padding: '14px 16px', textAlign: 'left', cursor: 'pointer',
                   transition: 'all 0.2s', position: 'relative',
                 }}>
-                  <div className="font-serif" style={{ fontSize: 18, fontWeight: 500, color: C.ink, marginBottom: 2 }}>{s.name}</div>
+                  <div className="font-serif" style={{ fontSize: 18, fontWeight: 500, color: school === s.key ? C.cream : C.ink, marginBottom: 2 }}>{s.name}</div>
                   <div className="font-sans" style={{ fontSize: 11, color: s.color, letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500 }}>{s.tagline}</div>
                   <div style={{ marginTop: 6 }}>
-                    <span className="font-mono" style={{ fontSize: 10, color: C.soft }}>{s.bigO}</span>
+                    <span className="font-mono" style={{ fontSize: 10, color: school === s.key ? C.parchment : C.soft }}>{s.bigO}</span>
                   </div>
                 </button>
             ))}
