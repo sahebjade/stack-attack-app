@@ -1,0 +1,2658 @@
+import React, { useReducer, useState, useEffect, useRef } from 'react';
+
+// ============================================================================
+// GAME LOGIC (from previous iteration, plus 2-player support)
+// ============================================================================
+
+// Generate n unique random integers in [min, max]
+const generateDeck = (n = 8, min = 1, max = 99) => {
+  const deck = new Set();
+  while (deck.size < n) {
+    deck.add(Math.floor(Math.random() * (max - min + 1)) + min);
+  }
+  return Array.from(deck);
+};
+
+// Pre-compute bottom-up merge operations for n elements
+const buildMergeOps = (n) => {
+  const ops = [];
+  let size = 1;
+  while (size < n) {
+    for (let start = 0; start < n; start += size * 2) {
+      const mid = Math.min(start + size, n);
+      const end = Math.min(start + size * 2, n);
+      if (mid < end) ops.push({ start, mid, end });
+    }
+    size *= 2;
+  }
+  return ops;
+};
+
+// Compute theoretical minimum comparisons for each algorithm on a given deck
+const computeMins = (deck) => {
+  const n = deck.length;
+
+  // Bubble: no early termination in this game → always n*(n-1)/2
+  const bubble = n * (n - 1) / 2;
+
+  // Selection: always scans full remaining subarray → n*(n-1)/2
+  const selection = n * (n - 1) / 2;
+
+  // Insertion: simulate optimal play
+  const insertionArr = [...deck];
+  let insertionComps = 0;
+  for (let i = 1; i < n; i++) {
+    const val = insertionArr[i];
+    let j = i - 1;
+    while (j >= 0 && insertionArr[j] > val) {
+      insertionArr[j + 1] = insertionArr[j];
+      j--;
+      insertionComps++;
+    }
+    if (j >= 0) insertionComps++; // drop comparison (found a ≤ element)
+    insertionArr[j + 1] = val;
+  }
+
+  // Merge (bottom-up): simulate actual merge comparisons
+  const mergeArr = [...deck];
+  const mergeOps = buildMergeOps(n);
+  let mergeComps = 0;
+  for (const op of mergeOps) {
+    const left = mergeArr.slice(op.start, op.mid);
+    const right = mergeArr.slice(op.mid, op.end);
+    const merged = [];
+    let li = 0, ri = 0;
+    while (li < left.length && ri < right.length) {
+      mergeComps++;
+      if (left[li] <= right[ri]) merged.push(left[li++]);
+      else merged.push(right[ri++]);
+    }
+    while (li < left.length) merged.push(left[li++]);
+    while (ri < right.length) merged.push(right[ri++]);
+    for (let k = 0; k < merged.length; k++) mergeArr[op.start + k] = merged[k];
+  }
+
+  // Quick: simulate with median-of-subarray pivot (optimal play)
+  const computeQuickComps = (arr, start, end) => {
+    if (end - start <= 1) return 0;
+    const sub = arr.slice(start, end);
+    sub.sort((a, b) => a - b);
+    const medianVal = sub[Math.floor(sub.length / 2)];
+    // Find pivot index in original array
+    let pivotIdx = start;
+    for (let i = start; i < end; i++) {
+      if (arr[i] === medianVal) { pivotIdx = i; break; }
+    }
+    const pivotVal = arr[pivotIdx];
+    const left = [], right = [];
+    for (let i = start; i < end; i++) {
+      if (i === pivotIdx) continue;
+      if (arr[i] < pivotVal) left.push(arr[i]);
+      else right.push(arr[i]);
+    }
+    const comps = end - start - 1; // compare each non-pivot element
+    // Reconstruct array for recursive calls
+    const newArr = [...arr];
+    let pos = start;
+    for (const v of left) newArr[pos++] = v;
+    const newPivotIdx = pos;
+    newArr[pos++] = pivotVal;
+    for (const v of right) newArr[pos++] = v;
+    return comps
+      + computeQuickComps(newArr, start, newPivotIdx)
+      + computeQuickComps(newArr, newPivotIdx + 1, end);
+  };
+  const quick = computeQuickComps([...deck], 0, n);
+
+  return { bubble, selection, insertion: insertionComps, merge: mergeComps, quick };
+};
+
+const SCHOOL_NAMES = {
+  bubble: 'Bubble Monks',
+  quick: 'Quick Order',
+  insertion: 'Insertion Lodge',
+  selection: 'Selection Circle',
+  merge: 'Merge Guild',
+};
+
+const makePlayerState = (deck, school) => {
+  const n = deck.length;
+  const base = {
+    school,
+    lane: deck.map((v, i) => ({ id: i, value: v, locked: false })),
+    comparisons: 0,
+    swaps: 0,
+    penalties: 0,
+    highlights: {},
+    finished: false,
+    pendingAction: null,
+  };
+
+  if (school === 'bubble') {
+    return { ...base, pawn: 0, passEnd: n };
+  }
+  if (school === 'quick') {
+    return {
+      ...base,
+      quickPhase: 'choose_pivot',
+      pivotIdx: null,
+      activeRange: [0, n],
+      compareIdx: null,
+      pendingRanges: [],
+    };
+  }
+  if (school === 'insertion') {
+    return {
+      ...base,
+      insertionSorted: 1,       // first card is trivially sorted
+      heldCardIdx: null,        // original index of card being inserted
+      scanPos: null,            // comparison target (moves left)
+      insertionPhase: 'ready',  // 'ready' | 'comparing'
+    };
+  }
+  if (school === 'selection') {
+    return {
+      ...base,
+      selectionScanStart: 0,
+      selectionScanIdx: 1,
+      selectionMinIdx: 0,
+      selectionPhase: 'scanning', // 'scanning' | 'confirm_swap'
+    };
+  }
+  if (school === 'merge') {
+    const mergeOps = buildMergeOps(n);
+    return {
+      ...base,
+      mergeOps,
+      currentMergeOpIdx: 0,
+      mergeState: null,
+      mergePhase: 'start_merge', // 'start_merge' | 'comparing' | 'auto_append'
+    };
+  }
+  return base;
+};
+
+const initialState = (school, mode) => {
+  const deck = generateDeck();
+  const mins = computeMins(deck);
+  return {
+    mode,
+    deck,
+    mins,
+    activePlayer: 0,
+    players: mode === '2player'
+      ? [makePlayerState(deck, 'bubble'), makePlayerState(deck, 'quick')]
+      : [makePlayerState(deck, school)],
+    log: [{
+      type: 'start',
+      text: mode === '2player'
+        ? `Random deck. P1: Bubble Monks vs P2: Quick Order.`
+        : `Random deck. School: ${SCHOOL_NAMES[school] || school}.`,
+    }],
+  };
+};
+
+// Apply a reducer action to a specific player's state
+// Helper: finalize insertion — the card is already at heldCardIdx in the lane (swapped into place).
+// Just advance to the next unsorted card.
+function doInsertionFinish(state, comparisons, swaps, playerNum, logEntry) {
+  const nextSorted = state.insertionSorted + 1;
+  const allDone = nextSorted >= state.lane.length;
+
+  const logEntries = [logEntry];
+  if (allDone) {
+    logEntries.push({ type: 'done', text: `P${playerNum} finished: ${comparisons} comp, ${swaps} shifts.` });
+  }
+
+  return {
+    ...state,
+    lane: allDone ? state.lane.map(c => ({ ...c, locked: true })) : state.lane,
+    comparisons,
+    swaps,
+    insertionSorted: nextSorted,
+    heldCardIdx: null,
+    scanPos: null,
+    insertionPhase: 'ready',
+    highlights: {},
+    pendingAction: null,
+    finished: allDone,
+    _logEntries: logEntries,
+  };
+}
+
+function playerReducer(state, action) {
+  switch (action.type) {
+    case 'BUBBLE_SETUP_COMPARE': {
+      if (state.finished) return state;
+      const leftIdx = state.pawn;
+      const rightIdx = state.pawn + 1;
+      if (rightIdx >= state.passEnd) return state;
+      const left = state.lane[leftIdx].value;
+      const right = state.lane[rightIdx].value;
+      return {
+        ...state,
+        highlights: { [leftIdx]: 'compare_left', [rightIdx]: 'compare_right' },
+        pendingAction: { type: 'bubble_compare', leftIdx, rightIdx, left, right, shouldSwap: left > right },
+      };
+    }
+
+    case 'BUBBLE_EXECUTE': {
+      if (!state.pendingAction || state.pendingAction.type !== 'bubble_compare') return state;
+      const { leftIdx, rightIdx, left, right, shouldSwap } = state.pendingAction;
+      const correct = action.swap === shouldSwap;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          highlights: {},
+          pendingAction: null,
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong call on ${left} vs ${right}.` },
+        };
+      }
+
+      let newLane = [...state.lane];
+      let newSwaps = state.swaps;
+      if (shouldSwap) {
+        [newLane[leftIdx], newLane[rightIdx]] = [newLane[rightIdx], newLane[leftIdx]];
+        newSwaps += 1;
+      }
+      const newComparisons = state.comparisons + 1;
+      const newPawn = state.pawn + 1;
+      const finishedPass = newPawn + 1 >= state.passEnd;
+      let newPassEnd = state.passEnd;
+      let finalLane = newLane;
+      let finalPawn = newPawn;
+      let logEntries = [{
+        type: 'action',
+        text: `P${action.playerNum}: ${left} vs ${right} → ${shouldSwap ? 'swap' : 'keep'}.`,
+      }];
+
+      if (finishedPass) {
+        const lockIdx = state.passEnd - 1;
+        finalLane = newLane.map((c, i) => i === lockIdx ? { ...c, locked: true } : c);
+        newPassEnd = state.passEnd - 1;
+        finalPawn = 0;
+        while (finalPawn < finalLane.length && finalLane[finalPawn].locked) finalPawn += 1;
+        logEntries.push({ type: 'lock', text: `P${action.playerNum}: Locked ${finalLane[lockIdx].value}.` });
+
+        // If only one unlocked card remains, it's already in place — lock it too
+        if (newPassEnd <= 1) {
+          finalLane = finalLane.map(c => c.locked ? c : { ...c, locked: true });
+        }
+      }
+
+      const allLocked = finalLane.every(c => c.locked);
+      if (allLocked) {
+        logEntries.push({ type: 'done', text: `P${action.playerNum} finished: ${newComparisons} comp, ${newSwaps} swap.` });
+      }
+
+      return {
+        ...state,
+        lane: finalLane,
+        comparisons: newComparisons,
+        swaps: newSwaps,
+        pawn: finalPawn,
+        passEnd: newPassEnd,
+        highlights: {},
+        pendingAction: null,
+        finished: allLocked,
+        _logEntries: logEntries,
+      };
+    }
+
+    case 'QUICK_CHOOSE_PIVOT': {
+      if (state.finished || state.quickPhase !== 'choose_pivot') return state;
+      const [start, end] = state.activeRange;
+      if (action.idx < start || action.idx >= end) return state;
+      let firstCompare = start;
+      if (firstCompare === action.idx) firstCompare += 1;
+      return {
+        ...state,
+        pivotIdx: action.idx,
+        quickPhase: 'comparing',
+        compareIdx: firstCompare,
+        highlights: { [action.idx]: 'pivot', ...(firstCompare < end ? { [firstCompare]: 'compare' } : {}) },
+        _logEntry: { type: 'action', text: `P${action.playerNum}: Chose pivot ${state.lane[action.idx].value}.` },
+      };
+    }
+
+    case 'QUICK_SETUP_COMPARE': {
+      if (state.finished || state.quickPhase !== 'comparing') return state;
+      const cardIdx = state.compareIdx;
+      const [start, end] = state.activeRange;
+      if (cardIdx >= end) return state;
+      const cardVal = state.lane[cardIdx].value;
+      const pivotVal = state.lane[state.pivotIdx].value;
+      return {
+        ...state,
+        highlights: { ...state.highlights, [cardIdx]: 'compare', [state.pivotIdx]: 'pivot' },
+        pendingAction: { type: 'quick_compare', cardIdx, cardVal, pivotVal, toBlue: cardVal < pivotVal },
+      };
+    }
+
+    case 'QUICK_EXECUTE': {
+      if (!state.pendingAction || state.pendingAction.type !== 'quick_compare') return state;
+      const { cardIdx, cardVal, pivotVal, toBlue } = state.pendingAction;
+      const correct = action.toBlue === toBlue;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          highlights: { [state.pivotIdx]: 'pivot' },
+          pendingAction: null,
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong partition call.` },
+        };
+      }
+      let newSwaps = state.swaps;
+      if (toBlue) newSwaps += 1;
+      const nextHighlights = { ...state.highlights };
+      nextHighlights[cardIdx] = toBlue ? 'blue' : 'red';
+      nextHighlights[state.pivotIdx] = 'pivot';
+      const [start, end] = state.activeRange;
+      let nextCompare = cardIdx + 1;
+      if (nextCompare === state.pivotIdx) nextCompare += 1;
+      const newComparisons = state.comparisons + 1;
+      const logEntry = { type: 'action', text: `P${action.playerNum}: ${cardVal} → ${toBlue ? 'BLUE' : 'RED'}.` };
+      if (nextCompare >= end) {
+        return {
+          ...state,
+          comparisons: newComparisons,
+          swaps: newSwaps,
+          highlights: nextHighlights,
+          quickPhase: 'seal',
+          pendingAction: null,
+          _logEntry: logEntry,
+        };
+      }
+      nextHighlights[nextCompare] = 'compare';
+      return {
+        ...state,
+        comparisons: newComparisons,
+        swaps: newSwaps,
+        highlights: nextHighlights,
+        compareIdx: nextCompare,
+        pendingAction: null,
+        _logEntry: logEntry,
+      };
+    }
+
+    case 'QUICK_SEAL': {
+      if (state.quickPhase !== 'seal') return state;
+      const [start, end] = state.activeRange;
+      const blues = [];
+      const reds = [];
+      for (let i = start; i < end; i++) {
+        if (i === state.pivotIdx) continue;
+        const h = state.highlights[i];
+        if (h === 'blue') blues.push(state.lane[i]);
+        else reds.push(state.lane[i]);
+      }
+      const pivotCard = { ...state.lane[state.pivotIdx], locked: true };
+      const newSection = [...blues, pivotCard, ...reds];
+      const newLane = state.lane.map((c, i) =>
+        (i < start || i >= end) ? c : newSection[i - start]
+      );
+      const pivotFinalIdx = start + blues.length;
+      const newPending = [...state.pendingRanges];
+      if (blues.length >= 2) newPending.push([start, start + blues.length]);
+      if (reds.length >= 2) newPending.push([pivotFinalIdx + 1, end]);
+      let finalLane = [...newLane];
+      if (blues.length === 1) {
+        finalLane = finalLane.map((c, i) => i === start ? { ...c, locked: true } : c);
+      }
+      if (reds.length === 1) {
+        finalLane = finalLane.map((c, i) => i === pivotFinalIdx + 1 ? { ...c, locked: true } : c);
+      }
+      const logEntries = [{ type: 'lock', text: `P${action.playerNum}: Sealed. ${pivotCard.value} locked.` }];
+      if (newPending.length === 0) {
+        const allLocked = finalLane.every(c => c.locked);
+        if (allLocked) logEntries.push({ type: 'done', text: `P${action.playerNum} finished: ${state.comparisons} comp, ${state.swaps} swap.` });
+        return {
+          ...state,
+          lane: finalLane,
+          quickPhase: allLocked ? 'done' : 'choose_pivot',
+          pivotIdx: null,
+          activeRange: allLocked ? [0, 0] : [0, finalLane.length],
+          compareIdx: null,
+          pendingRanges: [],
+          highlights: {},
+          pendingAction: null,
+          finished: allLocked,
+          _logEntries: logEntries,
+        };
+      }
+      const nextRange = newPending.pop();
+      return {
+        ...state,
+        lane: finalLane,
+        quickPhase: 'choose_pivot',
+        pivotIdx: null,
+        activeRange: nextRange,
+        compareIdx: null,
+        pendingRanges: newPending,
+        highlights: {},
+        pendingAction: null,
+        _logEntries: logEntries,
+      };
+    }
+
+    // ====== INSERTION SORT ======
+    // heldCardIdx = where the held card currently sits in the lane
+    // scanPos = card we're comparing against (one to the left of held)
+    // On shift: swap held card with blocking card in the lane (held moves left, blocker moves right)
+    // On drop: card is already in position, just finalize
+    case 'INSERTION_SETUP_COMPARE': {
+      if (state.finished || state.school !== 'insertion') return state;
+      if (state.insertionSorted >= state.lane.length) return state;
+
+      const heldIdx = state.heldCardIdx !== null ? state.heldCardIdx : state.insertionSorted;
+      const scanP = state.scanPos !== null ? state.scanPos : state.insertionSorted - 1;
+      const heldVal = state.lane[heldIdx].value;
+      const cmpVal = state.lane[scanP].value;
+      const shouldShift = cmpVal > heldVal;
+
+      return {
+        ...state,
+        heldCardIdx: heldIdx,
+        scanPos: scanP,
+        insertionPhase: 'comparing',
+        highlights: { [heldIdx]: 'compare_right', [scanP]: 'compare_left' },
+        pendingAction: { type: 'insertion_compare', heldVal, cmpVal, scanP, shouldShift },
+      };
+    }
+
+    case 'INSERTION_EXECUTE': {
+      if (!state.pendingAction || state.pendingAction.type !== 'insertion_compare') return state;
+      const { heldVal, cmpVal, scanP, shouldShift } = state.pendingAction;
+      const correct = action.shift === shouldShift;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          highlights: { [state.heldCardIdx]: 'compare_right' },
+          pendingAction: null,
+          insertionPhase: 'ready',
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong call on ${heldVal} vs ${cmpVal}.` },
+        };
+      }
+      const newComparisons = state.comparisons + 1;
+
+      if (shouldShift) {
+        // Swap held card with blocking card in the lane
+        const newLane = [...state.lane];
+        const heldIdx = state.heldCardIdx;
+        [newLane[heldIdx], newLane[scanP]] = [newLane[scanP], newLane[heldIdx]];
+        const newSwaps = state.swaps + 1;
+        const logEntry = { type: 'action', text: `P${action.playerNum}: ${cmpVal} > ${heldVal}, slide ${cmpVal} right.` };
+
+        // Held card is now at scanP
+        const newHeldIdx = scanP;
+        const nextScan = scanP - 1;
+
+        if (nextScan < 0) {
+          // Reached position 0, card is in place
+          const finishLog = { type: 'lock', text: `P${action.playerNum}: ${heldVal} placed at position 1.` };
+          return doInsertionFinish(
+            { ...state, lane: newLane, heldCardIdx: newHeldIdx },
+            newComparisons, newSwaps, action.playerNum, logEntry
+          );
+        }
+        // More room to scan left
+        return {
+          ...state,
+          lane: newLane,
+          comparisons: newComparisons,
+          swaps: newSwaps,
+          heldCardIdx: newHeldIdx,
+          scanPos: nextScan,
+          insertionPhase: 'ready',
+          highlights: { [newHeldIdx]: 'compare_right' },
+          pendingAction: null,
+          _logEntry: logEntry,
+        };
+      } else {
+        // Card fits here, it's already in position (no swap needed)
+        const logEntry = { type: 'lock', text: `P${action.playerNum}: ${heldVal} placed at position ${state.heldCardIdx + 1}.` };
+        return doInsertionFinish(state, newComparisons, state.swaps, action.playerNum, logEntry);
+      }
+    }
+
+    // ====== SELECTION SORT ======
+    case 'SELECTION_SETUP_COMPARE': {
+      if (state.finished || state.school !== 'selection') return state;
+      if (state.selectionPhase !== 'scanning') return state;
+      const scanIdx = state.selectionScanIdx;
+      const minIdx = state.selectionMinIdx;
+      if (scanIdx >= state.lane.length) return state;
+      const scanVal = state.lane[scanIdx].value;
+      const minVal = state.lane[minIdx].value;
+      const isNewMin = scanVal < minVal;
+      return {
+        ...state,
+        highlights: { [scanIdx]: 'compare_right', [minIdx]: 'compare_left' },
+        pendingAction: { type: 'selection_compare', scanIdx, scanVal, minIdx, minVal, isNewMin },
+      };
+    }
+
+    case 'SELECTION_EXECUTE': {
+      if (!state.pendingAction || state.pendingAction.type !== 'selection_compare') return state;
+      const { scanIdx, scanVal, minIdx, minVal, isNewMin } = state.pendingAction;
+      const correct = action.isNewMin === isNewMin;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          highlights: {},
+          pendingAction: null,
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong call: ${scanVal} vs current min ${minVal}.` },
+        };
+      }
+      const newComparisons = state.comparisons + 1;
+      const newMinIdx = isNewMin ? scanIdx : minIdx;
+      const nextScanIdx = scanIdx + 1;
+      const logEntry = { type: 'action', text: `P${action.playerNum}: ${scanVal} ${isNewMin ? '<' : '≥'} ${minVal} → ${isNewMin ? 'new min' : 'keep min'}.` };
+
+      if (nextScanIdx >= state.lane.length) {
+        // Scan complete, move to confirm_swap
+        return {
+          ...state,
+          comparisons: newComparisons,
+          selectionMinIdx: newMinIdx,
+          selectionScanIdx: nextScanIdx,
+          selectionPhase: 'confirm_swap',
+          highlights: { [newMinIdx]: 'pivot', [state.selectionScanStart]: 'compare_left' },
+          pendingAction: null,
+          _logEntry: logEntry,
+        };
+      }
+      return {
+        ...state,
+        comparisons: newComparisons,
+        selectionMinIdx: newMinIdx,
+        selectionScanIdx: nextScanIdx,
+        highlights: {},
+        pendingAction: null,
+        _logEntry: logEntry,
+      };
+    }
+
+    case 'SELECTION_SWAP': {
+      if (state.selectionPhase !== 'confirm_swap') return state;
+      const { selectionScanStart, selectionMinIdx } = state;
+      let newLane = [...state.lane];
+      let newSwaps = state.swaps;
+      const logEntries = [];
+      if (selectionMinIdx !== selectionScanStart) {
+        [newLane[selectionScanStart], newLane[selectionMinIdx]] = [newLane[selectionMinIdx], newLane[selectionScanStart]];
+        newSwaps += 1;
+        logEntries.push({ type: 'action', text: `P${action.playerNum}: Swap ${newLane[selectionScanStart].value} into position ${selectionScanStart + 1}.` });
+      } else {
+        logEntries.push({ type: 'action', text: `P${action.playerNum}: ${newLane[selectionScanStart].value} already in place.` });
+      }
+      newLane[selectionScanStart] = { ...newLane[selectionScanStart], locked: true };
+      logEntries.push({ type: 'lock', text: `P${action.playerNum}: Locked ${newLane[selectionScanStart].value}.` });
+
+      const nextStart = selectionScanStart + 1;
+      // If only one element left, lock it too
+      if (nextStart >= newLane.length - 1) {
+        if (nextStart < newLane.length) {
+          newLane[nextStart] = { ...newLane[nextStart], locked: true };
+        }
+        logEntries.push({ type: 'done', text: `P${action.playerNum} finished: ${state.comparisons} comp, ${newSwaps} swap.` });
+        return {
+          ...state,
+          lane: newLane,
+          swaps: newSwaps,
+          selectionScanStart: nextStart,
+          selectionScanIdx: nextStart + 1,
+          selectionMinIdx: nextStart,
+          selectionPhase: 'scanning',
+          highlights: {},
+          pendingAction: null,
+          finished: true,
+          _logEntries: logEntries,
+        };
+      }
+      return {
+        ...state,
+        lane: newLane,
+        swaps: newSwaps,
+        selectionScanStart: nextStart,
+        selectionScanIdx: nextStart + 1,
+        selectionMinIdx: nextStart,
+        selectionPhase: 'scanning',
+        highlights: {},
+        pendingAction: null,
+        _logEntries: logEntries,
+      };
+    }
+
+    // ====== MERGE SORT ======
+    case 'MERGE_START': {
+      if (state.finished || state.school !== 'merge') return state;
+      if (state.mergePhase !== 'start_merge') return state;
+      const op = state.mergeOps[state.currentMergeOpIdx];
+      if (!op) return state;
+      const leftCards = state.lane.slice(op.start, op.mid).map(c => ({ ...c }));
+      const rightCards = state.lane.slice(op.mid, op.end).map(c => ({ ...c }));
+      const highlights = {};
+      for (let i = op.start; i < op.mid; i++) highlights[i] = 'blue';
+      for (let i = op.mid; i < op.end; i++) highlights[i] = 'red';
+      return {
+        ...state,
+        mergePhase: 'comparing',
+        mergeState: { leftCards, rightCards, leftPos: 0, rightPos: 0, merged: [], op },
+        highlights,
+        _logEntry: { type: 'action', text: `P${action.playerNum}: Merging [${leftCards.map(c => c.value)}] + [${rightCards.map(c => c.value)}].` },
+      };
+    }
+
+    case 'MERGE_SETUP_COMPARE': {
+      if (state.mergePhase !== 'comparing' || !state.mergeState) return state;
+      const { leftCards, rightCards, leftPos, rightPos } = state.mergeState;
+      if (leftPos >= leftCards.length || rightPos >= rightCards.length) return state;
+      const leftVal = leftCards[leftPos].value;
+      const rightVal = rightCards[rightPos].value;
+      const takeLeft = leftVal <= rightVal;
+      return {
+        ...state,
+        pendingAction: { type: 'merge_compare', leftVal, rightVal, takeLeft },
+      };
+    }
+
+    case 'MERGE_EXECUTE': {
+      if (!state.pendingAction || state.pendingAction.type !== 'merge_compare') return state;
+      const { leftVal, rightVal, takeLeft } = state.pendingAction;
+      const correct = action.takeLeft === takeLeft;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          pendingAction: null,
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong merge call: ${leftVal} vs ${rightVal}.` },
+        };
+      }
+      const ms = { ...state.mergeState };
+      const newComparisons = state.comparisons + 1;
+      const newSwaps = state.swaps + 1;
+      const merged = [...ms.merged];
+      let { leftPos, rightPos } = ms;
+      if (takeLeft) {
+        merged.push(ms.leftCards[leftPos]);
+        leftPos++;
+      } else {
+        merged.push(ms.rightCards[rightPos]);
+        rightPos++;
+      }
+      const logEntry = { type: 'action', text: `P${action.playerNum}: ${leftVal} vs ${rightVal} → take ${takeLeft ? leftVal : rightVal}.` };
+
+      // Check if one side exhausted
+      const leftDone = leftPos >= ms.leftCards.length;
+      const rightDone = rightPos >= ms.rightCards.length;
+      if (leftDone || rightDone) {
+        // Append remaining
+        const remaining = leftDone
+          ? ms.rightCards.slice(rightPos)
+          : ms.leftCards.slice(leftPos);
+        const finalMerged = [...merged, ...remaining];
+        // Write back to lane
+        const { op } = ms;
+        let newLane = [...state.lane];
+        for (let i = 0; i < finalMerged.length; i++) {
+          newLane[op.start + i] = { ...finalMerged[i] };
+        }
+        const nextOpIdx = state.currentMergeOpIdx + 1;
+        const allDone = nextOpIdx >= state.mergeOps.length;
+        const logEntries = [logEntry];
+        if (remaining.length > 0) {
+          logEntries.push({ type: 'action', text: `P${action.playerNum}: Append remaining [${remaining.map(c => c.value)}].` });
+        }
+        logEntries.push({ type: 'lock', text: `P${action.playerNum}: Merge complete → [${finalMerged.map(c => c.value)}].` });
+        if (allDone) {
+          newLane = newLane.map(c => ({ ...c, locked: true }));
+          logEntries.push({ type: 'done', text: `P${action.playerNum} finished: ${newComparisons} comp, ${newSwaps} moves.` });
+        }
+        return {
+          ...state,
+          lane: newLane,
+          comparisons: newComparisons,
+          swaps: newSwaps,
+          currentMergeOpIdx: nextOpIdx,
+          mergeState: null,
+          mergePhase: allDone ? 'done' : 'start_merge',
+          highlights: {},
+          pendingAction: null,
+          finished: allDone,
+          _logEntries: logEntries,
+        };
+      }
+      return {
+        ...state,
+        comparisons: newComparisons,
+        swaps: newSwaps,
+        mergeState: { ...ms, leftPos, rightPos, merged },
+        pendingAction: null,
+        _logEntry: logEntry,
+      };
+    }
+
+    case 'CANCEL_PENDING':
+      return {
+        ...state,
+        highlights: state.pendingAction?.type === 'quick_compare'
+          ? { ...state.highlights, [state.pendingAction.cardIdx]: 'compare' }
+          : {},
+        pendingAction: null,
+      };
+
+    default:
+      return state;
+  }
+}
+
+function rootReducer(state, action) {
+  if (action.type === 'RESET') {
+    const school = action.school || state.players[0].school || 'bubble';
+    return initialState(school, action.mode || state.mode);
+  }
+
+  const pIdx = action.playerIdx !== undefined ? action.playerIdx : state.activePlayer;
+  const newPlayer = playerReducer(state.players[pIdx], { ...action, playerNum: pIdx + 1 });
+  const newPlayers = [...state.players];
+  newPlayers[pIdx] = newPlayer;
+
+  let newLog = state.log;
+  if (newPlayer._logEntry) {
+    newLog = [...newLog, newPlayer._logEntry];
+    delete newPlayer._logEntry;
+  }
+  if (newPlayer._logEntries) {
+    newLog = [...newLog, ...newPlayer._logEntries];
+    delete newPlayer._logEntries;
+  }
+
+  // In 2P mode, switch active player after certain actions (turn-based)
+  let newActivePlayer = state.activePlayer;
+  if (state.mode === '2player') {
+    // Switch after a completed primitive (BUBBLE_EXECUTE, QUICK_EXECUTE, QUICK_SEAL, QUICK_CHOOSE_PIVOT)
+    const switches = ['BUBBLE_EXECUTE', 'QUICK_EXECUTE', 'QUICK_SEAL', 'INSERTION_EXECUTE', 'SELECTION_EXECUTE', 'SELECTION_SWAP', 'MERGE_EXECUTE'];
+    if (switches.includes(action.type) && !newPlayer.pendingAction) {
+      // Find next not-finished player
+      let next = (pIdx + 1) % 2;
+      if (!newPlayers[next].finished) {
+        newActivePlayer = next;
+      }
+    }
+  }
+
+  return { ...state, players: newPlayers, activePlayer: newActivePlayer, log: newLog };
+}
+
+// ============================================================================
+// DESIGN SYSTEM
+// ============================================================================
+
+const C = {
+  cream: '#F4EBD6',
+  paper: '#FBF6EA',
+  parchment: '#EADFC2',
+  gold: '#C9A227',
+  ink: '#1A1A1A',
+  crimson: '#A8322B',
+  emerald: '#2E7D5B',
+  cobalt: '#2C4A7F',
+  violet: '#5E3B7A',
+  slate: '#4A4A4A',
+  soft: '#6B6B6B',
+  rule: '#D4C9AC',
+  dark: '#0E0E0E',
+};
+
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: ${C.cream}; color: ${C.ink}; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+
+    .font-serif { font-family: 'Cormorant Garamond', Georgia, serif; }
+    .font-sans { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', Menlo, monospace; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes pulseGold {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(201, 162, 39, 0); }
+      50% { box-shadow: 0 0 0 6px rgba(201, 162, 39, 0.35); }
+    }
+    @keyframes pulseCobalt {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(44, 74, 127, 0); }
+      50% { box-shadow: 0 0 0 6px rgba(44, 74, 127, 0.35); }
+    }
+    @keyframes shimmer {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+    @keyframes scrollMarquee {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .grain-bg {
+      background-image:
+        radial-gradient(ellipse at 20% 10%, rgba(201, 162, 39, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 90%, rgba(168, 50, 43, 0.04) 0%, transparent 50%);
+    }
+    .grain-bg::before {
+      content: '';
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 0;
+      background-image:
+        repeating-conic-gradient(from 0deg, rgba(0,0,0,0.008) 0%, transparent 0.5%, transparent 1%);
+      mix-blend-mode: multiply;
+    }
+
+    .dragon-card-interactive { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease; }
+    .dragon-card-interactive:hover { transform: translateY(-3px); }
+
+    .link-underline { position: relative; }
+    .link-underline::after {
+      content: ''; position: absolute; bottom: -2px; left: 0;
+      width: 100%; height: 1px; background: currentColor;
+      transform: scaleX(0); transform-origin: right;
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .link-underline:hover::after { transform: scaleX(1); transform-origin: left; }
+
+    .subtle-scroll::-webkit-scrollbar { width: 6px; }
+    .subtle-scroll::-webkit-scrollbar-track { background: transparent; }
+    .subtle-scroll::-webkit-scrollbar-thumb { background: ${C.rule}; border-radius: 3px; }
+
+    button { font-family: inherit; }
+  `}</style>
+);
+
+// ============================================================================
+// SHARED VISUAL COMPONENTS
+// ============================================================================
+
+const DragonCard = ({ value, locked, highlight, compact = false, size }) => {
+  const barHeight = Math.max(0.1, Math.min(1, value / 50));
+  const suitColor =
+    value <= 10 ? C.cobalt :
+    value <= 25 ? C.emerald :
+    value <= 40 ? C.violet : C.crimson;
+
+  const bg = locked ? C.gold : C.cream;
+  const border =
+    highlight === 'pivot' ? C.gold :
+    (highlight === 'compare' || highlight === 'compare_left' || highlight === 'compare_right') ? C.cobalt :
+    highlight === 'blue' ? C.cobalt :
+    highlight === 'red' ? C.crimson : C.ink;
+
+  const pulseAnim =
+    highlight === 'pivot' ? 'pulseGold 1.6s ease-in-out infinite' :
+    (highlight === 'compare' || highlight === 'compare_left' || highlight === 'compare_right') ? 'pulseCobalt 1.3s ease-in-out infinite' :
+    'none';
+
+  const tintOverlay =
+    highlight === 'blue' ? 'rgba(44, 74, 127, 0.15)' :
+    highlight === 'red' ? 'rgba(168, 50, 43, 0.12)' : 'transparent';
+
+  const s = size || (compact ? { w: 48, h: 68, fs: 18, bar: 7 } : { w: 64, h: 90, fs: 24, bar: 9 });
+
+  return (
+    <div className="dragon-card-interactive" style={{
+      width: s.w, height: s.h, background: bg, borderRadius: 5,
+      border: `${highlight ? 2 : 1}px solid ${border}`,
+      position: 'relative', overflow: 'hidden',
+      boxShadow: locked
+        ? '0 2px 8px rgba(201, 162, 39, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.3)'
+        : '0 1px 3px rgba(0, 0, 0, 0.08)',
+      animation: pulseAnim, transition: 'all 0.3s ease',
+    }}>
+      {tintOverlay !== 'transparent' && (
+        <div style={{ position: 'absolute', inset: 0, background: tintOverlay, pointerEvents: 'none' }} />
+      )}
+      <div style={{
+        position: 'absolute', left: 3, bottom: 3, width: s.bar,
+        height: `calc(${barHeight * 100}% - 6px)`,
+        background: C.ink, opacity: 0.85,
+      }} />
+      <div className="font-serif" style={{
+        position: 'absolute', top: 4, right: 6,
+        fontWeight: 700, fontSize: s.fs, color: C.ink, letterSpacing: '-0.02em',
+      }}>
+        {value}
+      </div>
+      <div style={{
+        position: 'absolute', bottom: 4, right: 6,
+        width: compact ? 9 : 12, height: compact ? 9 : 12,
+        borderRadius: '50%', border: `2px solid ${suitColor}`,
+      }} />
+      {locked && (
+        <div className="font-sans" style={{
+          position: 'absolute', bottom: 3, left: compact ? 14 : 18,
+          fontSize: compact ? 6 : 7, fontWeight: 600,
+          letterSpacing: '0.1em', color: C.ink, opacity: 0.7,
+        }}>
+          LOCKED
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, showIndex = true }) => {
+  return (
+    <div style={{ display: 'flex', gap: compact ? 4 : 5, justifyContent: 'center', flexWrap: 'nowrap' }}>
+      {lane.map((card, idx) => {
+        const highlight = highlights[idx];
+        const clickable = clickablePredicate ? clickablePredicate(idx, card) : false;
+        return (
+          <div
+            key={card.id}
+            onClick={clickable ? () => onCardClick(idx) : undefined}
+            style={{
+              position: 'relative', cursor: clickable ? 'pointer' : 'default',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+            }}
+          >
+            <DragonCard value={card.value} locked={card.locked} highlight={highlight} compact={compact} />
+            {showIndex && (
+              <span className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.08em' }}>
+                {idx + 1}
+              </span>
+            )}
+            {clickable && (
+              <div style={{
+                position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
+                fontSize: 14, color: C.gold,
+                animation: 'shimmer 1.2s ease-in-out infinite',
+              }}>▼</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const Eyebrow = ({ children, color = C.soft }) => (
+  <div className="font-mono" style={{
+    fontSize: 10, color, letterSpacing: '0.25em',
+    textTransform: 'uppercase', fontWeight: 500,
+  }}>{children}</div>
+);
+
+const SerifHeading = ({ children, size = 36, color = C.ink, italic = false }) => (
+  <h2 className="font-serif" style={{
+    fontSize: size, fontWeight: 500, color, margin: 0,
+    letterSpacing: '-0.02em', lineHeight: 1.05,
+    fontStyle: italic ? 'italic' : 'normal',
+  }}>{children}</h2>
+);
+
+const DecorativeRule = ({ color = C.gold, width = 80, thick = false }) => (
+  <div style={{
+    height: thick ? 2 : 1, width, background: color,
+  }} />
+);
+
+const Button = ({ children, onClick, variant = 'primary', disabled, small = false, fullWidth = false }) => {
+  const [hover, setHover] = useState(false);
+  const bases = {
+    primary: {
+      bg: hover && !disabled ? C.cream : C.ink,
+      color: hover && !disabled ? C.ink : C.cream,
+      border: `1px solid ${C.ink}`,
+    },
+    inverse: {
+      bg: hover && !disabled ? C.ink : C.cream,
+      color: hover && !disabled ? C.cream : C.ink,
+      border: `1px solid ${C.ink}`,
+    },
+    secondary: {
+      bg: hover && !disabled ? C.ink : 'transparent',
+      color: hover && !disabled ? C.cream : C.ink,
+      border: `1px solid ${C.ink}`,
+    },
+    gold: {
+      bg: C.gold,
+      color: C.ink,
+      border: `1px solid ${C.gold}`,
+    },
+    swap: {
+      bg: C.crimson, color: C.cream, border: `1px solid ${C.crimson}`,
+    },
+    keep: {
+      bg: C.emerald, color: C.cream, border: `1px solid ${C.emerald}`,
+    },
+    ghost: {
+      bg: hover && !disabled ? C.rule : 'transparent',
+      color: C.ink, border: '1px solid transparent',
+    },
+  };
+  const s = bases[variant];
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: small ? '7px 14px' : '11px 22px',
+        background: s.bg, color: s.color, border: s.border,
+        borderRadius: 2, fontSize: small ? 11 : 12, fontWeight: 500,
+        letterSpacing: '0.1em', textTransform: 'uppercase',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.35 : 1, transition: 'all 0.2s ease',
+        width: fullWidth ? '100%' : 'auto',
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
+// ============================================================================
+// LANDING PAGE SECTIONS
+// ============================================================================
+
+const Nav = ({ onPlayClick }) => (
+  <nav style={{
+    position: 'sticky', top: 0, zIndex: 50,
+    background: 'rgba(244, 235, 214, 0.92)',
+    backdropFilter: 'blur(8px)',
+    borderBottom: `1px solid ${C.rule}`,
+  }}>
+    <div style={{
+      maxWidth: 1280, margin: '0 auto', padding: '18px 32px',
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+        <div className="font-serif" style={{
+          fontSize: 22, fontWeight: 600, color: C.ink, letterSpacing: '-0.01em',
+        }}>
+          Stack Attack
+        </div>
+        <div className="font-mono" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.2em' }}>
+          EST. 2026
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
+        {['The Game', 'How it Works', 'Demo', 'For Teachers'].map(link => (
+          <a
+            key={link}
+            href={`#${link.toLowerCase().replace(/\s/g, '-')}`}
+            className="link-underline font-sans"
+            style={{
+              fontSize: 12, color: C.ink, textDecoration: 'none',
+              letterSpacing: '0.05em', fontWeight: 500,
+            }}
+          >
+            {link}
+          </a>
+        ))}
+        <Button small onClick={onPlayClick}>Play Now</Button>
+      </div>
+    </div>
+  </nav>
+);
+
+const Hero = ({ onPlayClick }) => (
+  <section style={{
+    minHeight: '88vh', display: 'flex', alignItems: 'center',
+    padding: '80px 32px 120px', position: 'relative',
+  }}>
+    <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 80, alignItems: 'center' }}>
+        <div style={{ animation: 'fadeUp 0.8s ease-out' }}>
+          <Eyebrow color={C.gold}>A Board Game That Teaches Computer Science</Eyebrow>
+          <h1 className="font-serif" style={{
+            fontSize: 108, fontWeight: 500, color: C.ink, lineHeight: 0.95,
+            letterSpacing: '-0.03em', margin: '24px 0 32px',
+          }}>
+            Tame the<br/>
+            <span style={{ fontStyle: 'italic', color: C.crimson }}>chaos.</span><br/>
+            Order the<br/>
+            <span style={{ fontStyle: 'italic', color: C.gold }}>dragons.</span>
+          </h1>
+          <p className="font-serif" style={{
+            fontSize: 22, color: C.slate, lineHeight: 1.5,
+            maxWidth: 540, fontStyle: 'italic', marginBottom: 40,
+          }}>
+            A tabletop game where rival apprentices learn sorting algorithms by
+            doing — not by reading. Played by middle schoolers. Loved by their parents.
+          </p>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <Button onClick={onPlayClick}>Play the Demo</Button>
+            <a href="#how-it-works" style={{
+              fontFamily: 'Inter, sans-serif', fontSize: 12, color: C.ink,
+              letterSpacing: '0.15em', textTransform: 'uppercase', textDecoration: 'none',
+              fontWeight: 500,
+            }} className="link-underline">
+              How it works →
+            </a>
+          </div>
+          <div style={{ marginTop: 64, display: 'flex', gap: 48 }}>
+            {[
+              ['2–6', 'Players'],
+              ['12+', 'Ages'],
+              ['20 min', 'Per round'],
+              ['7', 'Sorting schools'],
+            ].map(([n, l]) => (
+              <div key={l}>
+                <div className="font-serif" style={{ fontSize: 32, fontWeight: 500, color: C.ink, letterSpacing: '-0.02em' }}>{n}</div>
+                <div className="font-mono" style={{ fontSize: 10, color: C.soft, letterSpacing: '0.18em', textTransform: 'uppercase', marginTop: 2 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Hero visual: floating dragon cards */}
+        <div style={{ position: 'relative', height: 560, animation: 'fadeIn 1.2s ease-out' }}>
+          {[
+            { v: 41, x: 0, y: 40, rot: -6, z: 1 },
+            { v: 17, x: 100, y: 0, rot: 4, z: 2 },
+            { v: 3, x: 200, y: 100, rot: -2, z: 3 },
+            { v: 22, x: 40, y: 200, rot: 8, z: 1 },
+            { v: 8, x: 180, y: 260, rot: -5, z: 2 },
+            { v: 33, x: 60, y: 360, rot: 3, z: 1 },
+          ].map((card, i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute', top: card.y, left: card.x,
+                transform: `rotate(${card.rot}deg)`,
+                zIndex: card.z,
+                animation: `fadeUp 0.8s ease-out ${0.2 + i * 0.1}s backwards`,
+              }}
+            >
+              <DragonCard value={card.v} size={{ w: 140, h: 200, fs: 48, bar: 16 }} />
+            </div>
+          ))}
+          {/* Decorative stamp */}
+          <div style={{
+            position: 'absolute', bottom: 20, right: 20,
+            width: 100, height: 100, border: `2px solid ${C.gold}`,
+            borderRadius: '50%', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', transform: 'rotate(-12deg)',
+            animation: 'fadeIn 1.5s ease-out 0.8s backwards',
+          }}>
+            <div className="font-mono" style={{
+              fontSize: 9, color: C.gold, letterSpacing: '0.2em',
+              textAlign: 'center', lineHeight: 1.3, fontWeight: 600,
+            }}>
+              ALGO-<br/>KNIGHT<br/>CERT<br/>v2.0
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {/* Scroll indicator */}
+    <div style={{
+      position: 'absolute', bottom: 32, left: '50%',
+      transform: 'translateX(-50%)',
+      fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
+      color: C.soft, letterSpacing: '0.25em', textTransform: 'uppercase',
+      animation: 'fadeIn 1.5s ease-out 1.2s backwards',
+    }}>
+      ↓ Scroll
+    </div>
+  </section>
+);
+
+const ProblemSection = () => (
+  <section style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}` }}>
+    <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
+      <Eyebrow>The Problem</Eyebrow>
+      <SerifHeading size={54}>
+        Sorting algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
+      </SerifHeading>
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+        <DecorativeRule width={120} />
+      </div>
+      <p className="font-serif" style={{
+        fontSize: 22, color: C.slate, lineHeight: 1.6, marginTop: 36,
+        maxWidth: 720, margin: '36px auto 0',
+      }}>
+        Most textbooks teach sorting as pseudocode. Most videos teach it as animation. Most
+        students memorize names and forget them by Thursday. There's a better way:
+        <span style={{ color: C.ink, fontStyle: 'italic' }}>&nbsp;make the student become the algorithm.</span>
+      </p>
+      <div style={{
+        marginTop: 80, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 48, textAlign: 'left',
+      }}>
+        {[
+          {
+            stat: '93%',
+            label: 'of CS students',
+            body: "can't correctly describe Quick Sort one week after their first lecture.",
+          },
+          {
+            stat: '4 min',
+            label: 'to teach',
+            body: 'a pencil-and-paper algorithm vs. 45 minutes for the same concept in slides.',
+          },
+          {
+            stat: '8×',
+            label: 'higher retention',
+            body: 'when students physically enact an algorithm versus watching it animate.',
+          },
+        ].map((item, i) => (
+          <div key={i}>
+            <div className="font-serif" style={{
+              fontSize: 64, fontWeight: 500, color: C.crimson,
+              letterSpacing: '-0.03em', lineHeight: 1,
+            }}>
+              {item.stat}
+            </div>
+            <Eyebrow>{item.label}</Eyebrow>
+            <p className="font-sans" style={{
+              fontSize: 14, color: C.slate, lineHeight: 1.6, marginTop: 12,
+            }}>
+              {item.body}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="font-mono" style={{ fontSize: 9, color: C.soft, marginTop: 48, letterSpacing: '0.15em' }}>
+        * Figures illustrative. See our research page for methodology.
+      </div>
+    </div>
+  </section>
+);
+
+const HowItWorks = () => (
+  <section id="how-it-works" style={{ padding: '120px 32px' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ textAlign: 'center', marginBottom: 80 }}>
+        <Eyebrow>How it Works</Eyebrow>
+        <SerifHeading size={54}>Three moves. Seven schools. One kingdom.</SerifHeading>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+          <DecorativeRule width={120} />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32 }}>
+        {[
+          {
+            num: '01',
+            title: 'Choose your school',
+            body: "Bubble Monks sort patiently by comparing neighbors. Quick Order partitions aggressively around a pivot. Merge Guild splits and recombines. Each School teaches one sorting algorithm — physically, in your hands.",
+            color: C.gold,
+          },
+          {
+            num: '02',
+            title: 'Execute one primitive per turn',
+            body: 'Every turn is one atomic action from your School: one comparison, one swap, one partition step. Tick your tally strip after every move. The strip is simultaneously your scorecard and your Big-O demonstration.',
+            color: C.crimson,
+          },
+          {
+            num: '03',
+            title: 'Win by elegance, not speed',
+            body: "The Efficiency Medal doesn't reward who finishes first. It rewards who comes closest to their algorithm's theoretical minimum. A well-played Bubble Sort beats a sloppy Quick Sort — and that's the lesson.",
+            color: C.emerald,
+          },
+        ].map((step, i) => (
+          <div key={i} style={{
+            background: C.paper, border: `1px solid ${C.rule}`,
+            padding: 40, position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', top: -1, left: -1,
+              width: 40, height: 40, borderColor: step.color,
+              borderStyle: 'solid', borderWidth: 0,
+              borderTopWidth: 3, borderLeftWidth: 3,
+            }} />
+            <div className="font-mono" style={{
+              fontSize: 11, color: step.color, letterSpacing: '0.2em',
+              fontWeight: 600, marginBottom: 20,
+            }}>
+              STEP {step.num}
+            </div>
+            <SerifHeading size={28}>{step.title}</SerifHeading>
+            <p className="font-sans" style={{
+              fontSize: 14, color: C.slate, lineHeight: 1.7, marginTop: 16,
+            }}>
+              {step.body}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Seven schools preview */}
+      <div style={{ marginTop: 100 }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <Eyebrow>The Seven Schools</Eyebrow>
+          <SerifHeading size={40} italic>Each one an algorithm. Each one a strategy.</SerifHeading>
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2,
+          border: `1px solid ${C.rule}`, background: C.rule,
+        }}>
+          {[
+            { name: 'Bubble Monks', symbol: '◯', complexity: 'O(n²)', color: C.gold },
+            { name: 'Quick Order', symbol: '◇', complexity: 'O(n log n)', color: C.crimson },
+            { name: 'Merge Guild', symbol: '▽▽', complexity: 'O(n log n)', color: C.cobalt },
+            { name: 'Insertion', symbol: '◨', complexity: 'O(n²)', color: C.emerald },
+            { name: 'Selection', symbol: '◐', complexity: 'O(n²)', color: C.violet },
+            { name: 'Heap', symbol: '△', complexity: 'O(n log n)', color: C.slate },
+            { name: 'Radix', symbol: '◙', complexity: 'O(nk)', color: C.ink },
+          ].map((school, i) => (
+            <div key={i} style={{
+              background: C.paper, padding: '28px 16px', textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: 28, color: school.color, marginBottom: 10,
+              }}>
+                {school.symbol}
+              </div>
+              <div className="font-serif" style={{
+                fontSize: 15, fontWeight: 500, color: C.ink, marginBottom: 6,
+              }}>
+                {school.name}
+              </div>
+              <div className="font-mono" style={{
+                fontSize: 10, color: C.soft, letterSpacing: '0.1em',
+              }}>
+                {school.complexity}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+// ============================================================================
+// EMBEDDED DEMO — the playable game
+// ============================================================================
+
+function getTutorialHint(state, activePlayerIdx) {
+  const p = state.players[activePlayerIdx];
+  if (!p || p.finished) return null;
+
+  // Bubble
+  if (p.school === 'bubble') {
+    if (p.pendingAction) {
+      const { left, right } = p.pendingAction;
+      return left > right
+        ? `${left} is bigger than ${right} → click "Swap".`
+        : `${left} is not bigger than ${right} → click "Keep".`;
+    }
+    return `Click "Compare Next Pair" to look at the two highlighted cards.`;
+  }
+
+  // Quick
+  if (p.school === 'quick') {
+    if (p.pendingAction) {
+      const { cardVal, pivotVal } = p.pendingAction;
+      return cardVal < pivotVal
+        ? `${cardVal} is less than pivot ${pivotVal} → click "Yes… → Left".`
+        : `${cardVal} is not less than pivot ${pivotVal} → click "No… → Right".`;
+    }
+    if (p.quickPhase === 'choose_pivot') return `Click one of the cards with a ▼ arrow to pick it as your pivot.`;
+    if (p.quickPhase === 'comparing') return `Click "Compare Next Card" to check the next card against the pivot.`;
+    if (p.quickPhase === 'seal') return `All cards placed! Click "Lock Pivot" to finish this partition.`;
+  }
+
+  // Insertion
+  if (p.school === 'insertion') {
+    if (p.pendingAction && p.pendingAction.type === 'insertion_compare') {
+      const { heldVal, cmpVal, shouldShift } = p.pendingAction;
+      return shouldShift
+        ? `${cmpVal} is bigger than ${heldVal} — it's blocking! Click "Yes… Slide right".`
+        : `${heldVal} fits here (≥ ${cmpVal}). Click "No… Drop it here".`;
+    }
+    return `Click "Compare" to check if your held card fits before the next card.`;
+  }
+
+  // Selection
+  if (p.school === 'selection') {
+    if (p.selectionPhase === 'confirm_swap') {
+      const minVal = p.lane[p.selectionMinIdx].value;
+      return p.selectionMinIdx !== p.selectionScanStart
+        ? `Found smallest: ${minVal}. Click to swap it into position ${p.selectionScanStart + 1}.`
+        : `${minVal} is already in the right spot. Click to lock it.`;
+    }
+    if (p.pendingAction && p.pendingAction.type === 'selection_compare') {
+      const { scanVal, minVal, isNewMin } = p.pendingAction;
+      return isNewMin
+        ? `${scanVal} is smaller than ${minVal} → click "Yes… New Smallest".`
+        : `${scanVal} is not smaller → click "No… Keep Looking".`;
+    }
+    return `Click "Check Next Card" to see if the next card is smaller than your current best.`;
+  }
+
+  // Merge
+  if (p.school === 'merge') {
+    if (p.mergePhase === 'start_merge') return `Click "Start Merging" to begin combining the two groups.`;
+    if (p.pendingAction && p.pendingAction.type === 'merge_compare') {
+      const { leftVal, rightVal, takeLeft } = p.pendingAction;
+      return takeLeft
+        ? `${leftVal} ≤ ${rightVal} → click "Take ${leftVal}" (the smaller one goes first).`
+        : `${rightVal} < ${leftVal} → click "Take ${rightVal}" (the smaller one goes first).`;
+    }
+    if (p.mergePhase === 'comparing') return `Click "Compare Next" to look at the front of each group.`;
+  }
+  return null;
+}
+
+const DemoSetup = ({ onStart }) => {
+  const [school, setSchool] = useState('bubble');
+  const [mode, setMode] = useState('tutorial');
+
+  return (
+    <div style={{ padding: '48px 56px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <Eyebrow color={C.gold}>Ready to Play</Eyebrow>
+        <SerifHeading size={40}>Configure your round</SerifHeading>
+        <p className="font-sans" style={{ fontSize: 12, color: C.soft, marginTop: 8 }}>
+          Each round uses 8 random cards (1–99).
+        </p>
+      </div>
+
+      <div style={{ marginBottom: 32 }}>
+        <div className="font-sans" style={{
+          fontSize: 11, color: C.soft, letterSpacing: '0.18em',
+          textTransform: 'uppercase', marginBottom: 12, fontWeight: 600,
+        }}>
+          1. Mode
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {[
+            { key: 'tutorial', label: 'Tutorial', desc: 'Hints tell you what to do. For learning.' },
+            { key: 'practice', label: 'Solo Practice', desc: 'You decide. Wrong calls = penalty.' },
+            { key: '2player', label: '2-Player Hot-Seat', desc: 'Bubble vs. Quick on shared table.' },
+          ].map(m => (
+            <button key={m.key} onClick={() => setMode(m.key)} style={{
+              background: mode === m.key ? C.ink : 'transparent',
+              color: mode === m.key ? C.cream : C.ink,
+              border: `1px solid ${C.ink}`, padding: '14px 16px',
+              textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s',
+            }}>
+              <div className="font-sans" style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{m.label}</div>
+              <div className="font-sans" style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.4 }}>{m.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode !== '2player' && (
+        <div style={{ marginBottom: 32 }}>
+          <div className="font-sans" style={{
+            fontSize: 11, color: C.soft, letterSpacing: '0.18em',
+            textTransform: 'uppercase', marginBottom: 12, fontWeight: 600,
+          }}>
+            2. School
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {[
+              { key: 'bubble', name: 'Bubble Monks', tagline: 'Patient. Pairwise.', bigO: 'O(n²)', color: C.gold },
+              { key: 'quick', name: 'Quick Order', tagline: 'Bold. Partitioning.', bigO: 'O(n log n)', color: C.crimson },
+              { key: 'insertion', name: 'Insertion Lodge', tagline: 'Methodical. Shifting.', bigO: 'O(n²)', color: C.emerald },
+              { key: 'selection', name: 'Selection Circle', tagline: 'Scanning. Minimal swaps.', bigO: 'O(n²)', color: C.violet },
+              { key: 'merge', name: 'Merge Guild', tagline: 'Divide & conquer.', bigO: 'O(n log n)', color: C.cobalt },
+            ].map(s => (
+              <button key={s.key} onClick={() => setSchool(s.key)} style={{
+                background: school === s.key ? C.cream : 'transparent',
+                border: `1px solid ${school === s.key ? s.color : C.rule}`,
+                borderLeft: `4px solid ${s.color}`,
+                padding: '14px 16px', textAlign: 'left', cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}>
+                <div className="font-serif" style={{ fontSize: 18, fontWeight: 500, color: C.ink, marginBottom: 2 }}>{s.name}</div>
+                <div className="font-sans" style={{ fontSize: 11, color: s.color, letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500 }}>{s.tagline}</div>
+                <div className="font-mono" style={{ fontSize: 10, color: C.soft, marginTop: 6 }}>{s.bigO}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ textAlign: 'center' }}>
+        <Button onClick={() => onStart(school, mode)}>Begin Round →</Button>
+      </div>
+    </div>
+  );
+};
+
+const TallyStrip = ({ label, value, max = 30, color = C.ink }) => {
+  const pct = Math.min(1, value / max);
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <span className="font-sans" style={{
+          fontSize: 9, letterSpacing: '0.15em', color: C.soft,
+          textTransform: 'uppercase', fontWeight: 500,
+        }}>{label}</span>
+        <span className="font-mono" style={{ fontSize: 16, fontWeight: 500, color }}>{value}</span>
+      </div>
+      <div style={{ height: 2, background: C.rule, borderRadius: 1, overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', width: `${pct * 100}%`, background: color,
+          transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        }} />
+      </div>
+    </div>
+  );
+};
+
+const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenarioMins, compact }) => {
+  const p = state.players[playerIdx];
+  const isActive = playerIdx === activePlayerIdx;
+  const theoreticalMin = scenarioMins[p.school];
+  const excess = Math.max(0, p.comparisons - theoreticalMin);
+  const score = p.finished
+    ? Math.max(0, Math.round(100 - (100 * excess / theoreticalMin) - p.penalties * 5))
+    : null;
+
+  const playerColor = p.school === 'bubble' ? C.gold : p.school === 'quick' ? C.crimson : p.school === 'insertion' ? C.emerald : p.school === 'selection' ? C.violet : C.cobalt;
+  const playerName = SCHOOL_NAMES[p.school] || p.school;
+
+  // Partition tray data for Quick
+  const showTray = p.school === 'quick' && !p.finished;
+  const blueCards = [];
+  const redCards = [];
+  if (showTray && p.pivotIdx !== null) {
+    const [s, e] = p.activeRange;
+    for (let i = s; i < e; i++) {
+      if (i === p.pivotIdx) continue;
+      const h = p.highlights[i];
+      if (h === 'blue') blueCards.push(p.lane[i]);
+      else if (h === 'red') redCards.push(p.lane[i]);
+    }
+  }
+
+  return (
+    <div style={{
+      border: `1px solid ${isActive && mode === '2player' ? playerColor : C.rule}`,
+      borderLeftWidth: mode === '2player' ? 4 : 1,
+      borderLeftColor: playerColor,
+      background: isActive && mode === '2player' ? C.paper : 'transparent',
+      padding: compact ? 20 : 24,
+      opacity: mode === '2player' && !isActive && !p.finished ? 0.55 : 1,
+      transition: 'all 0.3s ease',
+      position: 'relative',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+        marginBottom: 16, flexWrap: 'wrap', gap: 12,
+      }}>
+        <div>
+          {mode === '2player' && (
+            <Eyebrow color={playerColor}>Player {playerIdx + 1} · {playerName}</Eyebrow>
+          )}
+          {mode !== '2player' && <Eyebrow color={playerColor}>{playerName}</Eyebrow>}
+          {isActive && mode === '2player' && !p.finished && (
+            <div className="font-mono" style={{
+              fontSize: 9, color: playerColor, letterSpacing: '0.2em',
+              marginTop: 4, fontWeight: 600,
+            }}>
+              → YOUR TURN
+            </div>
+          )}
+          {p.finished && (
+            <div className="font-mono" style={{
+              fontSize: 9, color: C.emerald, letterSpacing: '0.2em',
+              marginTop: 4, fontWeight: 600,
+            }}>
+              ✓ FINISHED · SCORE {score}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          <div style={{ minWidth: 80 }}>
+            <TallyStrip label="Comp" value={p.comparisons} max={Math.max(30, theoreticalMin * 1.5)} />
+          </div>
+          <div style={{ minWidth: 70 }}>
+            <TallyStrip label="Swap" value={p.swaps} max={20} color={C.crimson} />
+          </div>
+          {p.penalties > 0 && (
+            <div style={{ minWidth: 60 }}>
+              <TallyStrip label="Pen" value={p.penalties} max={5} color={C.crimson} />
+            </div>
+          )}
+          <div style={{
+            paddingLeft: 14, borderLeft: `1px solid ${C.rule}`,
+          }}>
+            <div className="font-sans" style={{
+              fontSize: 9, color: C.soft, letterSpacing: '0.12em',
+              textTransform: 'uppercase', fontWeight: 500,
+            }}>Theo min</div>
+            <div className="font-mono" style={{ fontSize: 16, color: C.ink, fontWeight: 500 }}>{theoreticalMin}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pivot/pawn indicator row */}
+      {!p.finished && p.school === 'bubble' && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {p.lane.map((_, idx) => (
+            <div key={idx} className="font-mono" style={{
+              width: 64, textAlign: 'center', fontSize: 9,
+              color: idx === p.pawn ? C.cobalt : 'transparent',
+              letterSpacing: '0.1em', fontWeight: 600,
+            }}>▼ PAWN</div>
+          ))}
+        </div>
+      )}
+      {!p.finished && p.school === 'quick' && p.pivotIdx !== null && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {p.lane.map((_, idx) => (
+            <div key={idx} className="font-mono" style={{
+              width: 64, textAlign: 'center', fontSize: 9,
+              color: idx === p.pivotIdx ? C.gold : 'transparent',
+              letterSpacing: '0.1em', fontWeight: 600,
+            }}>♛ PIVOT</div>
+          ))}
+        </div>
+      )}
+      {!p.finished && p.school === 'insertion' && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {p.lane.map((_, idx) => {
+            const heldIdx = p.heldCardIdx !== null ? p.heldCardIdx : p.insertionSorted;
+            const isHeld = idx === heldIdx;
+            const isSorted = idx < p.insertionSorted && !isHeld;
+            const isScan = p.scanPos !== null && idx === p.scanPos;
+            return (
+              <div key={idx} className="font-mono" style={{
+                width: 64, textAlign: 'center', fontSize: 9,
+                color: isHeld ? C.emerald : isScan ? C.cobalt : isSorted ? C.soft : 'transparent',
+                letterSpacing: '0.1em', fontWeight: 600,
+              }}>
+                {isHeld ? '▼ HELD' : isSorted ? '✓' : ''}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!p.finished && p.school === 'selection' && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {p.lane.map((_, idx) => {
+            const isScanStart = idx === p.selectionScanStart;
+            const isMin = idx === p.selectionMinIdx && p.selectionPhase === 'scanning';
+            const isScan = idx === p.selectionScanIdx && p.selectionPhase === 'scanning';
+            return (
+              <div key={idx} className="font-mono" style={{
+                width: 64, textAlign: 'center', fontSize: 9,
+                color: isMin ? C.violet : isScan ? C.cobalt : isScanStart && !isMin ? C.soft : 'transparent',
+                letterSpacing: '0.1em', fontWeight: 600,
+              }}>{isMin ? '★ MIN' : isScan ? '▼ SCAN' : ''}</div>
+            );
+          })}
+        </div>
+      )}
+      {!p.finished && p.school === 'merge' && p.mergeState && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+          {p.lane.map((_, idx) => {
+            const op = p.mergeState.op;
+            const isLeft = idx >= op.start && idx < op.mid;
+            const isRight = idx >= op.mid && idx < op.end;
+            return (
+              <div key={idx} className="font-mono" style={{
+                width: 64, textAlign: 'center', fontSize: 9,
+                color: isLeft ? C.cobalt : isRight ? C.crimson : 'transparent',
+                letterSpacing: '0.1em', fontWeight: 600,
+              }}>{isLeft ? 'LEFT' : isRight ? 'RIGHT' : ''}</div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The lane itself */}
+      <Lane
+        lane={p.lane}
+        highlights={p.highlights}
+        onCardClick={(idx) => {
+          if (!isActive && mode === '2player') return;
+          if (p.school === 'quick' && p.quickPhase === 'choose_pivot') {
+            dispatch({ type: 'QUICK_CHOOSE_PIVOT', idx, playerIdx });
+          }
+        }}
+        clickablePredicate={(idx, card) => {
+          if (!isActive && mode === '2player') return false;
+          if (p.school !== 'quick' || p.quickPhase !== 'choose_pivot') return false;
+          if (p.finished) return false;
+          const [s, e] = p.activeRange;
+          return !card.locked && idx >= s && idx < e;
+        }}
+      />
+
+      {/* Partition tray */}
+      {showTray && p.pivotIdx !== null && (blueCards.length > 0 || redCards.length > 0) && (
+        <div style={{
+          marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2,
+          border: `1px solid ${C.rule}`,
+        }}>
+          <div style={{ background: 'rgba(44, 74, 127, 0.06)', padding: '10px 14px', minHeight: 80 }}>
+            <div className="font-sans" style={{
+              fontSize: 9, color: C.cobalt, letterSpacing: '0.15em',
+              textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+            }}>&lt; Pivot (Blue)</div>
+            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              {blueCards.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+            </div>
+          </div>
+          <div style={{ background: 'rgba(168, 50, 43, 0.05)', padding: '10px 14px', minHeight: 80 }}>
+            <div className="font-sans" style={{
+              fontSize: 9, color: C.crimson, letterSpacing: '0.15em',
+              textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+            }}>≥ Pivot (Red)</div>
+            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              {redCards.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge tray */}
+      {p.school === 'merge' && p.mergeState && p.mergeState.merged.length > 0 && (
+        <div style={{
+          marginTop: 16, border: `1px solid ${C.rule}`,
+          background: 'rgba(44, 74, 127, 0.04)', padding: '10px 14px',
+        }}>
+          <div className="font-sans" style={{
+            fontSize: 9, color: C.cobalt, letterSpacing: '0.15em',
+            textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+          }}>Merged Result</div>
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            {p.mergeState.merged.map(c => <DragonCard key={c.id} value={c.value} compact />)}
+          </div>
+        </div>
+      )}
+
+      {/* Action area */}
+      {(!p.finished && (isActive || mode !== '2player')) && (
+        <div style={{
+          marginTop: 16, padding: '16px 20px',
+          background: C.paper, border: `1px solid ${C.rule}`,
+        }}>
+          <ActionArea state={p} dispatch={dispatch} playerIdx={playerIdx} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Persistent algorithm rule card — always visible so players know the one rule they follow
+const AlgoRule = ({ school }) => {
+  const rules = {
+    bubble: { rule: 'Compare neighbors. If left > right, swap them.', color: C.gold },
+    quick: { rule: 'Pick a pivot. Put smaller cards left, bigger cards right.', color: C.crimson },
+    insertion: { rule: 'Pick up the next card. Slide it left until it fits.', color: C.emerald },
+    selection: { rule: 'Find the smallest card. Put it in the next open spot.', color: C.violet },
+    merge: { rule: 'Split into halves. Merge them back by always taking the smaller.', color: C.cobalt },
+  };
+  const r = rules[school];
+  if (!r) return null;
+  return (
+    <div style={{
+      padding: '8px 14px', marginBottom: 12,
+      borderLeft: `3px solid ${r.color}`, background: `${r.color}11`,
+    }}>
+      <span className="font-mono" style={{ fontSize: 9, color: r.color, letterSpacing: '0.15em', fontWeight: 600 }}>
+        YOUR RULE
+      </span>
+      <span className="font-sans" style={{ fontSize: 12, color: C.ink, marginLeft: 10 }}>
+        {r.rule}
+      </span>
+    </div>
+  );
+};
+
+// Shared comparison prompt — the core UX pattern every algorithm uses
+const ComparePrompt = ({ leftLabel, leftVal, rightLabel, rightVal, children }) => (
+  <div>
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: 12, marginBottom: 14, padding: '10px 0',
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div className="font-mono" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.12em', marginBottom: 2 }}>
+          {leftLabel}
+        </div>
+        <div className="font-serif" style={{ fontSize: 32, fontWeight: 600, color: C.ink }}>{leftVal}</div>
+      </div>
+      <div className="font-sans" style={{ fontSize: 13, color: C.slate, fontWeight: 500, padding: '0 4px' }}>vs</div>
+      <div style={{ textAlign: 'center' }}>
+        <div className="font-mono" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.12em', marginBottom: 2 }}>
+          {rightLabel}
+        </div>
+        <div className="font-serif" style={{ fontSize: 32, fontWeight: 600, color: C.ink }}>{rightVal}</div>
+      </div>
+    </div>
+    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+      {children}
+    </div>
+  </div>
+);
+
+// Step progress dots
+const StepDots = ({ current, total, color }) => (
+  <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 10 }}>
+    <span className="font-mono" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.1em', marginRight: 6 }}>
+      STEP {current}/{total}
+    </span>
+    {Array.from({ length: total }, (_, i) => (
+      <div key={i} style={{
+        width: 6, height: 6, borderRadius: '50%',
+        background: i < current ? color : C.rule,
+        transition: 'background 0.2s',
+      }} />
+    ))}
+  </div>
+);
+
+const ActionArea = ({ state: p, dispatch, playerIdx }) => {
+  if (p.finished) return null;
+
+  // ── BUBBLE SORT ──────────────────────────────
+  if (p.school === 'bubble') {
+    if (p.pendingAction) {
+      const { left, right } = p.pendingAction;
+      return (
+        <div>
+          <AlgoRule school="bubble" />
+          <ComparePrompt leftLabel="LEFT" leftVal={left} rightLabel="RIGHT" rightVal={right}>
+            <Button variant="swap" small onClick={() => dispatch({ type: 'BUBBLE_EXECUTE', swap: true, playerIdx })}>
+              ← Swap ({left} &gt; {right})
+            </Button>
+            <Button variant="keep" small onClick={() => dispatch({ type: 'BUBBLE_EXECUTE', swap: false, playerIdx })}>
+              Keep → ({left} ≤ {right})
+            </Button>
+          </ComparePrompt>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <AlgoRule school="bubble" />
+        <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+          👉 Compare cards at positions <strong>{p.pawn + 1}</strong> and <strong>{p.pawn + 2}</strong>.
+        </div>
+        <Button small onClick={() => dispatch({ type: 'BUBBLE_SETUP_COMPARE', playerIdx })}>
+          Compare Next Pair
+        </Button>
+      </div>
+    );
+  }
+
+  // ── QUICK SORT ──────────────────────────────
+  if (p.school === 'quick') {
+    if (p.quickPhase === 'choose_pivot') {
+      const [s, e] = p.activeRange;
+      return (
+        <div>
+          <AlgoRule school="quick" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 6 }}>
+            👉 <strong>Pick a pivot card.</strong> Click any card with the ▼ arrow above it.
+          </div>
+          <div className="font-sans" style={{ fontSize: 11, color: C.soft, lineHeight: 1.5 }}>
+            The pivot is the card you'll compare everything against. A card near the middle
+            of the range (positions {s + 1}–{e}) usually works best.
+          </div>
+        </div>
+      );
+    }
+    if (p.quickPhase === 'comparing') {
+      if (p.pendingAction) {
+        const { cardVal, pivotVal } = p.pendingAction;
+        return (
+          <div>
+            <AlgoRule school="quick" />
+            <div className="font-sans" style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>
+              Is <strong style={{ color: C.ink }}>{cardVal}</strong> smaller than the pivot <strong style={{ color: C.ink }}>{pivotVal}</strong>?
+            </div>
+            <ComparePrompt leftLabel="THIS CARD" leftVal={cardVal} rightLabel="PIVOT" rightVal={pivotVal}>
+              <Button variant="keep" small onClick={() => dispatch({ type: 'QUICK_EXECUTE', toBlue: true, playerIdx })}>
+                Yes, {cardVal} &lt; {pivotVal} → Left
+              </Button>
+              <Button variant="swap" small onClick={() => dispatch({ type: 'QUICK_EXECUTE', toBlue: false, playerIdx })}>
+                No, {cardVal} ≥ {pivotVal} → Right
+              </Button>
+            </ComparePrompt>
+          </div>
+        );
+      }
+      return (
+        <div>
+          <AlgoRule school="quick" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            👉 Compare the next card (position {p.compareIdx + 1}) against the pivot.
+          </div>
+          <Button small onClick={() => dispatch({ type: 'QUICK_SETUP_COMPARE', playerIdx })}>
+            Compare Next Card
+          </Button>
+        </div>
+      );
+    }
+    if (p.quickPhase === 'seal') {
+      return (
+        <div>
+          <AlgoRule school="quick" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            ✅ All cards sorted around the pivot. Lock it in place!
+          </div>
+          <Button variant="gold" small onClick={() => dispatch({ type: 'QUICK_SEAL', playerIdx })}>
+            Lock Pivot
+          </Button>
+        </div>
+      );
+    }
+  }
+
+  // ── INSERTION SORT ──────────────────────────────
+  if (p.school === 'insertion') {
+    if (p.pendingAction && p.pendingAction.type === 'insertion_compare') {
+      const { heldVal, cmpVal } = p.pendingAction;
+      return (
+        <div>
+          <AlgoRule school="insertion" />
+          <div className="font-sans" style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>
+            You're holding <strong style={{ color: C.ink }}>{heldVal}</strong>.
+            Is <strong style={{ color: C.ink }}>{cmpVal}</strong> blocking it?
+          </div>
+          <ComparePrompt leftLabel="HOLDING" leftVal={heldVal} rightLabel="IN THE WAY?" rightVal={cmpVal}>
+            <Button variant="swap" small onClick={() => dispatch({ type: 'INSERTION_EXECUTE', shift: true, playerIdx })}>
+              Yes, {cmpVal} &gt; {heldVal} → Slide {cmpVal} right
+            </Button>
+            <Button variant="keep" small onClick={() => dispatch({ type: 'INSERTION_EXECUTE', shift: false, playerIdx })}>
+              No, {heldVal} fits here → Drop it
+            </Button>
+          </ComparePrompt>
+        </div>
+      );
+    }
+    if (p.insertionSorted < p.lane.length) {
+      const cardVal = p.lane[p.heldCardIdx !== null ? p.heldCardIdx : p.insertionSorted].value;
+      const scanTarget = p.scanPos !== null ? p.scanPos : p.insertionSorted - 1;
+      return (
+        <div>
+          <AlgoRule school="insertion" />
+          <StepDots current={p.insertionSorted} total={p.lane.length - 1} color={C.emerald} />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            👉 Holding card <strong>{cardVal}</strong>. Compare it with the card at position {scanTarget + 1}.
+          </div>
+          <Button small onClick={() => dispatch({ type: 'INSERTION_SETUP_COMPARE', playerIdx })}>
+            Compare
+          </Button>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  // ── SELECTION SORT ──────────────────────────────
+  if (p.school === 'selection') {
+    if (p.selectionPhase === 'confirm_swap') {
+      const minVal = p.lane[p.selectionMinIdx].value;
+      const destVal = p.lane[p.selectionScanStart].value;
+      const needsSwap = p.selectionMinIdx !== p.selectionScanStart;
+      return (
+        <div>
+          <AlgoRule school="selection" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            ✅ Found the smallest: <strong>{minVal}</strong>.
+            {needsSwap
+              ? ` Move it to position ${p.selectionScanStart + 1} (swapping with ${destVal}).`
+              : ` It's already in position ${p.selectionScanStart + 1} — just lock it.`}
+          </div>
+          <Button variant="gold" small onClick={() => dispatch({ type: 'SELECTION_SWAP', playerIdx })}>
+            {needsSwap ? `Swap ${minVal} into Place` : `Lock ${minVal}`}
+          </Button>
+        </div>
+      );
+    }
+    if (p.pendingAction && p.pendingAction.type === 'selection_compare') {
+      const { scanVal, minVal } = p.pendingAction;
+      return (
+        <div>
+          <AlgoRule school="selection" />
+          <div className="font-sans" style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>
+            Is <strong style={{ color: C.ink }}>{scanVal}</strong> smaller than the current smallest <strong style={{ color: C.ink }}>{minVal}</strong>?
+          </div>
+          <ComparePrompt leftLabel="THIS CARD" leftVal={scanVal} rightLabel="CURRENT SMALLEST" rightVal={minVal}>
+            <Button variant="swap" small onClick={() => dispatch({ type: 'SELECTION_EXECUTE', isNewMin: true, playerIdx })}>
+              Yes, {scanVal} &lt; {minVal} → New Smallest
+            </Button>
+            <Button variant="keep" small onClick={() => dispatch({ type: 'SELECTION_EXECUTE', isNewMin: false, playerIdx })}>
+              No, {scanVal} ≥ {minVal} → Keep Looking
+            </Button>
+          </ComparePrompt>
+        </div>
+      );
+    }
+    if (p.selectionScanIdx < p.lane.length) {
+      return (
+        <div>
+          <AlgoRule school="selection" />
+          <StepDots current={p.selectionScanStart} total={p.lane.length - 1} color={C.violet} />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            👉 Scanning for the smallest card. Current smallest: <strong>{p.lane[p.selectionMinIdx].value}</strong>.
+            Check position {p.selectionScanIdx + 1} next.
+          </div>
+          <Button small onClick={() => dispatch({ type: 'SELECTION_SETUP_COMPARE', playerIdx })}>
+            Check Next Card
+          </Button>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  // ── MERGE SORT ──────────────────────────────
+  if (p.school === 'merge') {
+    if (p.mergePhase === 'start_merge') {
+      const op = p.mergeOps[p.currentMergeOpIdx];
+      if (!op) return null;
+      const leftVals = p.lane.slice(op.start, op.mid).map(c => c.value);
+      const rightVals = p.lane.slice(op.mid, op.end).map(c => c.value);
+      return (
+        <div>
+          <AlgoRule school="merge" />
+          <StepDots current={p.currentMergeOpIdx + 1} total={p.mergeOps.length} color={C.cobalt} />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 4 }}>
+            👉 Merge two sorted groups into one:
+          </div>
+          <div style={{
+            display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 12, marginTop: 8,
+          }}>
+            <div style={{
+              padding: '6px 12px', background: `${C.cobalt}15`, border: `1px solid ${C.cobalt}40`,
+              borderRadius: 3,
+            }}>
+              <span className="font-mono" style={{ fontSize: 9, color: C.cobalt, letterSpacing: '0.12em' }}>LEFT </span>
+              <span className="font-serif" style={{ fontSize: 16, color: C.ink, fontWeight: 500 }}>{leftVals.join(', ')}</span>
+            </div>
+            <span className="font-sans" style={{ fontSize: 14, color: C.soft, alignSelf: 'center' }}>+</span>
+            <div style={{
+              padding: '6px 12px', background: `${C.crimson}12`, border: `1px solid ${C.crimson}30`,
+              borderRadius: 3,
+            }}>
+              <span className="font-mono" style={{ fontSize: 9, color: C.crimson, letterSpacing: '0.12em' }}>RIGHT </span>
+              <span className="font-serif" style={{ fontSize: 16, color: C.ink, fontWeight: 500 }}>{rightVals.join(', ')}</span>
+            </div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <Button small onClick={() => dispatch({ type: 'MERGE_START', playerIdx })}>
+              Start Merging
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (p.mergePhase === 'comparing' && p.mergeState) {
+      const { leftCards, rightCards, leftPos, rightPos, merged } = p.mergeState;
+      if (p.pendingAction && p.pendingAction.type === 'merge_compare') {
+        const { leftVal, rightVal } = p.pendingAction;
+        return (
+          <div>
+            <AlgoRule school="merge" />
+            <div className="font-sans" style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>
+              Which is smaller? Take it for the merged result.
+            </div>
+            <ComparePrompt leftLabel="LEFT NEXT" leftVal={leftVal} rightLabel="RIGHT NEXT" rightVal={rightVal}>
+              <Button variant="keep" small onClick={() => dispatch({ type: 'MERGE_EXECUTE', takeLeft: true, playerIdx })}>
+                {leftVal} is smaller → Take {leftVal}
+              </Button>
+              <Button variant="swap" small onClick={() => dispatch({ type: 'MERGE_EXECUTE', takeLeft: false, playerIdx })}>
+                {rightVal} is smaller → Take {rightVal}
+              </Button>
+            </ComparePrompt>
+            {merged.length > 0 && (
+              <div className="font-mono" style={{ fontSize: 10, color: C.soft, marginTop: 8, textAlign: 'center' }}>
+                Result so far: [{merged.map(c => c.value).join(', ')}]
+              </div>
+            )}
+          </div>
+        );
+      }
+      const leftDone = leftPos >= leftCards.length;
+      const rightDone = rightPos >= rightCards.length;
+      if (leftDone || rightDone) {
+        // This shouldn't normally be visible because merge auto-completes, but just in case
+        return (
+          <div>
+            <AlgoRule school="merge" />
+            <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+              One side is empty. Appending the rest automatically…
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div>
+          <AlgoRule school="merge" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            👉 Compare the front cards of each group.
+          </div>
+          {merged.length > 0 && (
+            <div className="font-mono" style={{ fontSize: 10, color: C.soft, marginBottom: 8 }}>
+              Result so far: [{merged.map(c => c.value).join(', ')}]
+            </div>
+          )}
+          <Button small onClick={() => dispatch({ type: 'MERGE_SETUP_COMPARE', playerIdx })}>
+            Compare Next
+          </Button>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  return null;
+};
+
+const DemoPlay = ({ initial, onReset }) => {
+  const [state, dispatch] = useReducer(rootReducer, initial, () =>
+    initialState(initial.school, initial.mode)
+  );
+  const hint = state.mode === 'tutorial' ? getTutorialHint(state, 0) : null;
+  const allFinished = state.players.every(p => p.finished);
+
+  return (
+    <div style={{ padding: '40px 40px 48px' }}>
+      {/* Top bar */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        paddingBottom: 16, marginBottom: 20, borderBottom: `1px solid ${C.rule}`,
+      }}>
+        <div>
+          <Eyebrow>
+            {state.mode === 'tutorial' ? 'Tutorial' : state.mode === 'practice' ? 'Solo Practice' : '2-Player Hot-Seat'}
+            {' · '}
+            Random Deck
+          </Eyebrow>
+        </div>
+        <button onClick={() => onReset(null)} className="font-mono" style={{
+          background: 'transparent', border: 'none', fontSize: 10,
+          color: C.soft, letterSpacing: '0.2em', textTransform: 'uppercase',
+          cursor: 'pointer', fontWeight: 500,
+        }}>← New Round</button>
+      </div>
+
+      {/* Tutorial hint */}
+      {hint && !allFinished && (
+        <div key={hint} style={{
+          background: '#FFF8E1', border: `1px solid ${C.gold}`,
+          borderLeft: `4px solid ${C.gold}`, padding: '12px 18px', marginBottom: 20,
+          animation: 'fadeUp 0.3s ease-out',
+        }}>
+          <span className="font-sans" style={{
+            fontWeight: 600, letterSpacing: '0.1em', fontSize: 9,
+            textTransform: 'uppercase', color: C.gold, marginRight: 10,
+          }}>Hint</span>
+          <span className="font-sans" style={{ fontSize: 12, color: C.ink, lineHeight: 1.5 }}>{hint}</span>
+        </div>
+      )}
+
+      {/* Player panels */}
+      <div style={{
+        display: state.mode === '2player' ? 'grid' : 'block',
+        gridTemplateColumns: state.mode === '2player' ? '1fr 1fr' : '1fr',
+        gap: 14,
+      }}>
+        {state.players.map((_, idx) => (
+          <PlayerPanel
+            key={idx}
+            state={state}
+            dispatch={dispatch}
+            playerIdx={idx}
+            activePlayerIdx={state.activePlayer}
+            mode={state.mode}
+            scenarioMins={state.mins}
+            compact={state.mode === '2player'}
+          />
+        ))}
+      </div>
+
+      {/* Victory screen */}
+      {allFinished && (
+        <div style={{
+          marginTop: 24, padding: '28px 32px',
+          background: C.ink, color: C.cream, position: 'relative', overflow: 'hidden',
+          animation: 'fadeUp 0.5s ease-out',
+        }}>
+          <Eyebrow color={C.gold}>Round Complete</Eyebrow>
+          <div style={{ display: 'grid', gridTemplateColumns: state.mode === '2player' ? '1fr 1fr auto' : '1fr auto', gap: 32, marginTop: 16, alignItems: 'center' }}>
+            {state.players.map((p, i) => {
+              const mins = state.mins[p.school];
+              const excess = Math.max(0, p.comparisons - mins);
+              const score = Math.max(0, Math.round(100 - (100 * excess / mins) - p.penalties * 5));
+              return (
+                <div key={i}>
+                  <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>
+                    {state.mode === '2player' ? `PLAYER ${i + 1}` : 'YOUR SCORE'}
+                  </div>
+                  <div className="font-serif" style={{
+                    fontSize: 56, fontWeight: 500, letterSpacing: '-0.02em', lineHeight: 1, marginTop: 8,
+                  }}>{score}</div>
+                  <div className="font-sans" style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                    {p.comparisons} comp · {p.swaps} swap · min {mins}
+                  </div>
+                </div>
+              );
+            })}
+            {state.mode === '2player' && (() => {
+              const [p1, p2] = state.players;
+              const s1 = Math.max(0, Math.round(100 - (100 * Math.max(0, p1.comparisons - state.mins[p1.school]) / state.mins[p1.school]) - p1.penalties * 5));
+              const s2 = Math.max(0, Math.round(100 - (100 * Math.max(0, p2.comparisons - state.mins[p2.school]) / state.mins[p2.school]) - p2.penalties * 5));
+              const winner = s1 === s2 ? 'Tie' : s1 > s2 ? 'P1 wins' : 'P2 wins';
+              return (
+                <div>
+                  <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>EFFICIENCY MEDAL</div>
+                  <div className="font-serif" style={{ fontSize: 32, fontWeight: 500, marginTop: 6 }}>{winner}</div>
+                </div>
+              );
+            })()}
+            <div>
+              <button onClick={() => dispatch({ type: 'RESET' })} style={{
+                background: C.cream, color: C.ink, border: 'none',
+                padding: '10px 20px', fontSize: 12, fontWeight: 600,
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+              }}>
+                Play Again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Activity log */}
+      <div style={{ marginTop: 24 }}>
+        <div className="font-sans" style={{
+          fontSize: 10, color: C.soft, letterSpacing: '0.18em',
+          textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+        }}>Activity Log</div>
+        <div className="subtle-scroll" style={{
+          background: C.paper, border: `1px solid ${C.rule}`,
+          padding: '12px 16px', maxHeight: 180, overflowY: 'auto',
+          fontSize: 11, lineHeight: 1.5,
+        }}>
+          {state.log.slice().reverse().map((entry, i) => (
+            <div key={state.log.length - 1 - i} className="font-sans" style={{
+              padding: '4px 0',
+              color: entry.type === 'lock' ? C.gold :
+                     entry.type === 'penalty' ? C.crimson :
+                     entry.type === 'done' ? C.emerald :
+                     entry.type === 'start' ? C.soft : C.ink,
+              fontWeight: (entry.type === 'lock' || entry.type === 'done') ? 600 : 400,
+            }}>{entry.text}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => {
+  return (
+    <section id="demo" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <Eyebrow color={C.gold}>Playable Demo</Eyebrow>
+          <SerifHeading size={54} color={C.cream}>
+            Try it <span style={{ fontStyle: 'italic' }}>now.</span>
+          </SerifHeading>
+          <p className="font-serif" style={{
+            fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
+            maxWidth: 520, margin: '20px auto 0', lineHeight: 1.5,
+          }}>
+            A slice of the full game. Full rules, real scoring. Tutorial mode holds your hand the first time through.
+          </p>
+        </div>
+
+        <div style={{
+          background: C.cream, color: C.ink,
+          border: `1px solid ${C.rule}`, position: 'relative',
+          boxShadow: '0 40px 80px rgba(0, 0, 0, 0.4)',
+        }}>
+          {initialConfig ? (
+            <DemoPlay initial={initialConfig} onReset={onConfigReset} />
+          ) : (
+            <DemoSetup onStart={(sch, m) => onConfigReset({ school: sch, mode: m })} />
+          )}
+        </div>
+      </div>
+    </section>
+  );
+});
+
+const TestimonialsSection = () => (
+  <section style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}` }}>
+    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ textAlign: 'center', marginBottom: 64 }}>
+        <Eyebrow>What They're Saying</Eyebrow>
+        <SerifHeading size={48} italic>Teachers. Parents. Students.</SerifHeading>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32 }}>
+        {[
+          {
+            quote: "My seventh-graders explained Big-O notation to me over pizza. I've been teaching CS for twelve years — that's never happened before.",
+            name: 'M. Chen',
+            role: 'Middle School CS Teacher',
+          },
+          {
+            quote: "We play on family game night. My eleven-year-old now argues with her older brother about pivot strategy. I have no complaints.",
+            name: 'R. Okonkwo',
+            role: 'Parent',
+          },
+          {
+            quote: "I failed my first algorithms exam in college. After three rounds of this with my nephew, I finally understood what merge sort actually does.",
+            name: 'J. Alvarez',
+            role: 'Software Developer',
+          },
+        ].map((t, i) => (
+          <div key={i} style={{
+            background: C.cream, padding: 36, border: `1px solid ${C.rule}`,
+            position: 'relative',
+          }}>
+            <div className="font-serif" style={{
+              position: 'absolute', top: 8, left: 16,
+              fontSize: 80, color: C.gold, lineHeight: 1, opacity: 0.4,
+              fontWeight: 600,
+            }}>"</div>
+            <p className="font-serif" style={{
+              fontSize: 17, color: C.ink, lineHeight: 1.55, marginTop: 20,
+              fontStyle: 'italic', position: 'relative',
+            }}>
+              {t.quote}
+            </p>
+            <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${C.rule}` }}>
+              <div className="font-sans" style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>
+                — {t.name}
+              </div>
+              <div className="font-mono" style={{ fontSize: 10, color: C.soft, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 4 }}>
+                {t.role}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const ForTeachersSection = () => (
+  <section id="for-teachers" style={{ padding: '120px 32px' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
+        <div>
+          <Eyebrow>For Educators</Eyebrow>
+          <SerifHeading size={54}>A <span style={{ fontStyle: 'italic' }}>50-minute</span> lesson plan, built in.</SerifHeading>
+          <p className="font-sans" style={{
+            fontSize: 15, color: C.slate, lineHeight: 1.7, marginTop: 24, maxWidth: 480,
+          }}>
+            The Teacher's Edition ships with a ready-to-run lesson plan mapped to CSTA standards
+            2-AP-11, 2-AP-13, 3A-AP-14, and 3A-AP-18. Discussion prompts. Exit ticket rubric.
+            Stealth assessment signals. Zero prep required.
+          </p>
+          <ul style={{ listStyle: 'none', marginTop: 32 }}>
+            {[
+              'Aligned to CSTA K-12 standards',
+              'Pre-configured scenario packs',
+              'Rubric-based stealth assessment',
+              'Works with 20-28 students in groups of 4',
+            ].map((item, i) => (
+              <li key={i} style={{
+                padding: '12px 0', borderBottom: i === 3 ? 'none' : `1px solid ${C.rule}`,
+                display: 'flex', alignItems: 'center', gap: 16,
+              }}>
+                <span className="font-mono" style={{
+                  fontSize: 10, color: C.gold, letterSpacing: '0.15em', fontWeight: 600,
+                }}>
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="font-sans" style={{ fontSize: 14, color: C.ink }}>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div style={{ marginTop: 40 }}>
+            <Button variant="gold">Download Teacher's Edition PDF</Button>
+          </div>
+        </div>
+
+        {/* Lesson plan preview */}
+        <div style={{
+          background: C.paper, padding: 36, border: `1px solid ${C.rule}`,
+          position: 'relative',
+        }}>
+          {[[0,0], [0,1], [1,0], [1,1]].map(([r, c]) => (
+            <div key={`${r}${c}`} style={{
+              position: 'absolute',
+              [r ? 'bottom' : 'top']: -1,
+              [c ? 'right' : 'left']: -1,
+              width: 14, height: 14, borderColor: C.gold,
+              borderStyle: 'solid', borderWidth: 0,
+              [r ? 'borderBottomWidth' : 'borderTopWidth']: 2,
+              [c ? 'borderRightWidth' : 'borderLeftWidth']: 2,
+            }} />
+          ))}
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <Eyebrow color={C.gold}>Sample Lesson</Eyebrow>
+            <SerifHeading size={24}>Day 1 · Bubble vs. Quick</SerifHeading>
+          </div>
+          <div>
+            {[
+              ['00:00', 'Hook', 'Show 8 unsorted cards. Ask: "Fewest moves?"'],
+              ['00:05', 'Introduce', 'Demo Bubble and Quick primitives on display cards.'],
+              ['00:15', 'Play', 'Groups of 4 race. Same starting deck. Tally comparisons.'],
+              ['00:35', 'Debrief', 'Whole-class discussion. Surface Big-O organically.'],
+              ['00:45', 'Exit Ticket', '3-sentence explanation of Bubble Sort.'],
+            ].map(([time, phase, desc], i) => (
+              <div key={i} style={{
+                display: 'grid', gridTemplateColumns: '60px 100px 1fr',
+                gap: 16, padding: '12px 0',
+                borderBottom: i === 4 ? 'none' : `1px solid ${C.rule}`,
+              }}>
+                <div className="font-mono" style={{ fontSize: 10, color: C.soft, letterSpacing: '0.1em' }}>{time}</div>
+                <div className="font-sans" style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{phase}</div>
+                <div className="font-sans" style={{ fontSize: 12, color: C.slate, lineHeight: 1.5 }}>{desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const PricingSection = () => (
+  <section style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}` }}>
+    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ textAlign: 'center', marginBottom: 56 }}>
+        <Eyebrow>Get the Game</Eyebrow>
+        <SerifHeading size={54}>Three ways in.</SerifHeading>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+        {[
+          {
+            name: 'Print & Play',
+            price: 'Free',
+            desc: 'The print-and-cut POC PDF. Two schools, 24 cards, one scenario.',
+            features: ['24 Dragon Cards', 'Bubble + Quick Schools', 'Quick-start rules', 'Digital download'],
+            cta: 'Download PDF',
+            featured: false,
+          },
+          {
+            name: 'Standard Edition',
+            price: '$34.99',
+            desc: 'The full physical game. All seven schools, scenario deck, wooden components.',
+            features: ['96 linen-finish cards', '7 School Boards', 'Wooden pawns & pivot hats', '18 scenarios', 'Rulebook + Teacher guide'],
+            cta: 'Pre-order',
+            featured: true,
+          },
+          {
+            name: 'Classroom Pack',
+            price: '$249',
+            desc: 'Eight Standard copies bundled. Lesson plan, rubric, CSTA alignment guide.',
+            features: ['8 Standard copies', 'Teacher\'s Edition binder', 'Scenario expansion pack', 'Digital companion access'],
+            cta: 'Request Quote',
+            featured: false,
+          },
+        ].map((tier, i) => (
+          <div key={i} style={{
+            background: tier.featured ? C.ink : C.cream,
+            color: tier.featured ? C.cream : C.ink,
+            padding: 36,
+            border: `1px solid ${tier.featured ? C.ink : C.rule}`,
+            position: 'relative',
+            transform: tier.featured ? 'translateY(-12px)' : 'none',
+          }}>
+            {tier.featured && (
+              <div style={{
+                position: 'absolute', top: -10, right: 16,
+                background: C.gold, color: C.ink, padding: '4px 10px',
+                fontSize: 9, fontWeight: 700, letterSpacing: '0.15em',
+                fontFamily: 'Inter, sans-serif', textTransform: 'uppercase',
+              }}>Most Popular</div>
+            )}
+            <div className="font-serif" style={{
+              fontSize: 24, fontWeight: 500, marginBottom: 8,
+              letterSpacing: '-0.01em',
+            }}>
+              {tier.name}
+            </div>
+            <div className="font-serif" style={{
+              fontSize: 48, fontWeight: 500, marginBottom: 16,
+              letterSpacing: '-0.02em', color: tier.featured ? C.gold : C.ink,
+            }}>
+              {tier.price}
+            </div>
+            <p className="font-sans" style={{
+              fontSize: 13, opacity: 0.75, lineHeight: 1.6, marginBottom: 24,
+              minHeight: 48,
+            }}>
+              {tier.desc}
+            </p>
+            <ul style={{ listStyle: 'none', marginBottom: 32 }}>
+              {tier.features.map((f, j) => (
+                <li key={j} className="font-sans" style={{
+                  fontSize: 13, padding: '6px 0', display: 'flex', gap: 10,
+                }}>
+                  <span style={{ color: tier.featured ? C.gold : C.emerald }}>✓</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <Button
+              variant={tier.featured ? 'gold' : 'primary'}
+              fullWidth
+            >
+              {tier.cta}
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const Footer = () => (
+  <footer style={{
+    background: C.dark, color: C.cream, padding: '80px 32px 40px',
+  }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 56 }}>
+        <div>
+          <div className="font-serif" style={{
+            fontSize: 28, fontWeight: 500, marginBottom: 12,
+            letterSpacing: '-0.01em',
+          }}>
+            Stack Attack
+          </div>
+          <p className="font-serif" style={{
+            fontSize: 15, fontStyle: 'italic', lineHeight: 1.6,
+            color: 'rgba(244, 235, 214, 0.7)', maxWidth: 340,
+          }}>
+            A sorting algorithm board game for the classroom, the kitchen table, and anywhere people want to learn by doing.
+          </p>
+        </div>
+        {[
+          { title: 'Product', links: ['The Game', 'How it Works', 'Expansions', 'Digital'] },
+          { title: 'For You', links: ['Teachers', 'Parents', 'Students', 'Designers'] },
+          { title: 'Company', links: ['About', 'Press', 'Contact', 'Careers'] },
+        ].map((col, i) => (
+          <div key={i}>
+            <div className="font-mono" style={{
+              fontSize: 10, color: C.gold, letterSpacing: '0.2em',
+              textTransform: 'uppercase', fontWeight: 600, marginBottom: 16,
+            }}>
+              {col.title}
+            </div>
+            {col.links.map(link => (
+              <div key={link} className="font-sans" style={{
+                fontSize: 13, padding: '6px 0',
+                color: 'rgba(244, 235, 214, 0.75)',
+                cursor: 'pointer', transition: 'color 0.2s',
+              }}>
+                {link}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{
+        paddingTop: 32, borderTop: '1px solid rgba(244, 235, 214, 0.15)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <div className="font-mono" style={{
+          fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
+        }}>
+          © 2026 STACK ATTACK · ALL SCHOOLS RESERVED
+        </div>
+        <div className="font-mono" style={{
+          fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
+        }}>
+          DESIGNED FOR LEARNING · BUILT FOR PLAY
+        </div>
+      </div>
+    </div>
+  </footer>
+);
+
+// ============================================================================
+// ROOT
+// ============================================================================
+
+export default function App() {
+  const [demoConfig, setDemoConfig] = useState(null);
+  const demoRef = useRef(null);
+
+  const scrollToDemo = () => {
+    demoRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  return (
+    <div className="grain-bg" style={{ position: 'relative', overflow: 'hidden' }}>
+      <GlobalStyles />
+      <Nav onPlayClick={scrollToDemo} />
+      <main style={{ position: 'relative', zIndex: 1 }}>
+        <Hero onPlayClick={scrollToDemo} />
+        <ProblemSection />
+        <HowItWorks />
+        <DemoSection
+          ref={demoRef}
+          initialConfig={demoConfig}
+          onConfigReset={(cfg) => setDemoConfig(cfg)}
+        />
+        <TestimonialsSection />
+        <ForTeachersSection />
+        <PricingSection />
+      </main>
+      <Footer />
+    </div>
+  );
+}
