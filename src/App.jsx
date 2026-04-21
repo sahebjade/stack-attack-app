@@ -1,4 +1,113 @@
-import React, { useReducer, useState, useEffect, useRef } from 'react';
+import React, { useReducer, useState, useEffect, useRef, useCallback } from 'react';
+
+// ============================================================================
+// PERSISTENT STATS (localStorage)
+// ============================================================================
+
+const STATS_KEY = 'stack_attack_stats';
+
+const loadStats = () => {
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return {
+    gamesPlayed: 0,
+    totalStars: 0,
+    perfectGames: 0,
+    streak: 0,
+    bestStreak: 0,
+    bySchool: {},
+  };
+};
+
+const saveStats = (stats) => {
+  try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch (e) { /* ignore */ }
+};
+
+const getStars = (score) => score >= 100 ? 3 : score >= 80 ? 2 : score >= 50 ? 1 : 0;
+
+const ACHIEVEMENTS = [
+  { id: 'first_sort', name: 'First Sort', desc: 'Complete your first round', icon: '🎯', check: s => s.gamesPlayed >= 1 },
+  { id: 'five_rounds', name: 'Warming Up', desc: 'Complete 5 rounds', icon: '🔥', check: s => s.gamesPlayed >= 5 },
+  { id: 'ten_rounds', name: 'Dedicated', desc: 'Complete 10 rounds', icon: '💪', check: s => s.gamesPlayed >= 10 },
+  { id: 'first_perfect', name: 'Perfect!', desc: 'Score 100 on any algorithm', icon: '⭐', check: s => s.perfectGames >= 1 },
+  { id: 'five_perfects', name: 'Star Student', desc: 'Get 5 perfect scores', icon: '🌟', check: s => s.perfectGames >= 5 },
+  { id: 'streak_3', name: 'On a Roll', desc: '3 perfect scores in a row', icon: '🔥', check: s => s.bestStreak >= 3 },
+  { id: 'streak_5', name: 'Unstoppable', desc: '5 perfect scores in a row', icon: '⚡', check: s => s.bestStreak >= 5 },
+  { id: 'try_bubble', name: 'Bubble Monk', desc: 'Complete a Bubble Sort round', icon: '🫧', check: s => (s.bySchool.bubble?.played || 0) >= 1 },
+  { id: 'try_quick', name: 'Quick Thinker', desc: 'Complete a Quick Sort round', icon: '⚔️', check: s => (s.bySchool.quick?.played || 0) >= 1 },
+  { id: 'try_insertion', name: 'Card Slider', desc: 'Complete an Insertion Sort round', icon: '📥', check: s => (s.bySchool.insertion?.played || 0) >= 1 },
+  { id: 'try_selection', name: 'Eagle Eye', desc: 'Complete a Selection Sort round', icon: '👁️', check: s => (s.bySchool.selection?.played || 0) >= 1 },
+  { id: 'try_merge', name: 'Divide & Conquer', desc: 'Complete a Merge Sort round', icon: '🔀', check: s => (s.bySchool.merge?.played || 0) >= 1 },
+  { id: 'all_schools', name: 'Renaissance Sorter', desc: 'Play all 5 algorithms', icon: '🏆',
+    check: s => ['bubble','quick','insertion','selection','merge'].every(k => (s.bySchool[k]?.played || 0) >= 1) },
+  { id: 'collector', name: 'Star Collector', desc: 'Earn 30 total stars', icon: '✨', check: s => s.totalStars >= 30 },
+];
+
+// ============================================================================
+// CONFETTI ANIMATION
+// ============================================================================
+
+const Confetti = ({ active }) => {
+  const canvasRef = useRef(null);
+  const particles = useRef([]);
+
+  useEffect(() => {
+    if (!active || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    const colors = ['#C9A227', '#A8322B', '#2E7D5B', '#2C4A7F', '#7B4FA0', '#E8A838', '#E06060'];
+
+    particles.current = Array.from({ length: 80 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height - canvas.height,
+      w: Math.random() * 8 + 4,
+      h: Math.random() * 6 + 3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      vx: (Math.random() - 0.5) * 3,
+      vy: Math.random() * 3 + 2,
+      rot: Math.random() * Math.PI * 2,
+      vr: (Math.random() - 0.5) * 0.2,
+      opacity: 1,
+    }));
+
+    let raf;
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      particles.current.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        p.vy += 0.05;
+        if (p.y > canvas.height) p.opacity -= 0.02;
+        if (p.opacity <= 0) return;
+        alive = true;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, p.opacity);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      if (alive) raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+
+  if (!active) return null;
+  return (
+    <canvas ref={canvasRef} style={{
+      position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+      pointerEvents: 'none', zIndex: 10,
+    }} />
+  );
+};
 
 // ============================================================================
 // GAME LOGIC (from previous iteration, plus 2-player support)
@@ -172,11 +281,12 @@ const makePlayerState = (deck, school) => {
   return base;
 };
 
-const initialState = (school, mode) => {
-  const deck = generateDeck();
+const initialState = (school, mode, deckSize = 8) => {
+  const deck = generateDeck(deckSize);
   const mins = computeMins(deck);
   return {
     mode,
+    deckSize,
     deck,
     mins,
     activePlayer: 0,
@@ -753,7 +863,7 @@ function playerReducer(state, action) {
 function rootReducer(state, action) {
   if (action.type === 'RESET') {
     const school = action.school || state.players[0].school || 'bubble';
-    return initialState(school, action.mode || state.mode);
+    return initialState(school, action.mode || state.mode, action.deckSize || state.deckSize || 8);
   }
 
   const pIdx = action.playerIdx !== undefined ? action.playerIdx : state.activePlayer;
@@ -1450,12 +1560,18 @@ function getTutorialHint(state, activePlayerIdx) {
 const DemoSetup = ({ onStart }) => {
   const [school, setSchool] = useState('bubble');
   const [mode, setMode] = useState('tutorial');
+  const [deckSize, setDeckSize] = useState(8);
+  const [stats] = useState(() => loadStats());
+  const [showAchievements, setShowAchievements] = useState(false);
+
+  const unlocked = ACHIEVEMENTS.filter(a => a.check(stats));
+  const locked = ACHIEVEMENTS.filter(a => !a.check(stats));
 
   const howToPlay = {
     bubble: {
       color: C.gold,
       steps: [
-        'You have 8 cards in a row.',
+        `You have ${deckSize} cards in a row.`,
         'A pawn moves left to right, comparing each pair of neighbors.',
         'If the left card is bigger → Swap them. Otherwise → Keep.',
         'When the pawn reaches the end, the largest card gets locked on the right.',
@@ -1465,7 +1581,7 @@ const DemoSetup = ({ onStart }) => {
     quick: {
       color: C.crimson,
       steps: [
-        'You have 8 cards in a row.',
+        `You have ${deckSize} cards in a row.`,
         'Pick one card as your pivot (try to guess the middle value).',
         'Compare each other card against the pivot: smaller → Left, bigger → Right.',
         'When all cards are placed, the pivot locks in its final spot.',
@@ -1495,7 +1611,7 @@ const DemoSetup = ({ onStart }) => {
     merge: {
       color: C.cobalt,
       steps: [
-        'Cards start as 8 individual "groups" of 1.',
+        `Cards start as ${deckSize} individual "groups" of 1.`,
         'Merge pairs of groups: compare the front card of each group.',
         'The smaller card goes into the merged result first.',
         'When one group is empty, append the rest of the other group.',
@@ -1508,13 +1624,86 @@ const DemoSetup = ({ onStart }) => {
 
   return (
     <div style={{ padding: '48px 56px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <Eyebrow color={C.gold}>Ready to Play</Eyebrow>
         <SerifHeading size={40}>Configure your round</SerifHeading>
         <p className="font-sans" style={{ fontSize: 12, color: C.soft, marginTop: 8 }}>
-          Each round uses 8 random cards (1–99). Sort them with the fewest comparisons to score 100.
+          Sort random cards with the fewest comparisons to score 100. Earn stars and unlock achievements!
         </p>
       </div>
+
+      {/* Stats bar */}
+      {stats.gamesPlayed > 0 && (
+        <div style={{
+          display: 'flex', justifyContent: 'center', gap: 24, marginBottom: 28,
+          padding: '12px 20px', background: C.paper, border: `1px solid ${C.rule}`,
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 20, fontWeight: 600, color: C.ink }}>{stats.gamesPlayed}</div>
+            <div className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Rounds</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 20, fontWeight: 600, color: C.gold }}>{'⭐'.repeat(Math.min(3, Math.floor(stats.totalStars / 10)))}{'☆'.repeat(3 - Math.min(3, Math.floor(stats.totalStars / 10)))}</div>
+            <div className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{stats.totalStars} Stars</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 20, fontWeight: 600, color: C.emerald }}>{stats.perfectGames}</div>
+            <div className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Perfect</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 20, fontWeight: 600, color: C.crimson }}>{stats.streak}</div>
+            <div className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Streak</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 20, fontWeight: 600, color: C.cobalt }}>{unlocked.length}/{ACHIEVEMENTS.length}</div>
+            <div className="font-sans" style={{ fontSize: 9, color: C.soft, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+              <button onClick={() => setShowAchievements(!showAchievements)} style={{
+                background: 'none', border: 'none', cursor: 'pointer', fontSize: 9,
+                color: C.cobalt, letterSpacing: '0.15em', textTransform: 'uppercase',
+                textDecoration: 'underline', padding: 0,
+              }}>Badges</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Achievement panel */}
+      {showAchievements && (
+        <div style={{
+          marginBottom: 28, padding: '16px 20px',
+          background: C.paper, border: `1px solid ${C.rule}`,
+        }}>
+          <div className="font-mono" style={{ fontSize: 10, color: C.gold, letterSpacing: '0.15em', fontWeight: 600, marginBottom: 12 }}>
+            ACHIEVEMENTS ({unlocked.length}/{ACHIEVEMENTS.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
+            {unlocked.map(a => (
+              <div key={a.id} style={{
+                padding: '8px 10px', background: `${C.gold}15`, border: `1px solid ${C.gold}40`,
+                display: 'flex', gap: 8, alignItems: 'center',
+              }}>
+                <span style={{ fontSize: 18 }}>{a.icon}</span>
+                <div>
+                  <div className="font-sans" style={{ fontSize: 11, fontWeight: 600, color: C.ink }}>{a.name}</div>
+                  <div className="font-sans" style={{ fontSize: 9, color: C.soft }}>{a.desc}</div>
+                </div>
+              </div>
+            ))}
+            {locked.map(a => (
+              <div key={a.id} style={{
+                padding: '8px 10px', background: C.cream, border: `1px solid ${C.rule}`,
+                display: 'flex', gap: 8, alignItems: 'center', opacity: 0.5,
+              }}>
+                <span style={{ fontSize: 18, filter: 'grayscale(1)' }}>🔒</span>
+                <div>
+                  <div className="font-sans" style={{ fontSize: 11, fontWeight: 600, color: C.soft }}>???</div>
+                  <div className="font-sans" style={{ fontSize: 9, color: C.soft }}>{a.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 32 }}>
         <div className="font-sans" style={{
@@ -1557,22 +1746,61 @@ const DemoSetup = ({ onStart }) => {
               { key: 'insertion', name: 'Insertion Lodge', tagline: 'Methodical. Shifting.', bigO: 'O(n²)', color: C.emerald },
               { key: 'selection', name: 'Selection Circle', tagline: 'Scanning. Minimal swaps.', bigO: 'O(n²)', color: C.violet },
               { key: 'merge', name: 'Merge Guild', tagline: 'Divide & conquer.', bigO: 'O(n log n)', color: C.cobalt },
-            ].map(s => (
-              <button key={s.key} onClick={() => setSchool(s.key)} style={{
-                background: school === s.key ? C.cream : 'transparent',
-                border: `1px solid ${school === s.key ? s.color : C.rule}`,
-                borderLeft: `4px solid ${s.color}`,
-                padding: '14px 16px', textAlign: 'left', cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}>
-                <div className="font-serif" style={{ fontSize: 18, fontWeight: 500, color: C.ink, marginBottom: 2 }}>{s.name}</div>
-                <div className="font-sans" style={{ fontSize: 11, color: s.color, letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500 }}>{s.tagline}</div>
-                <div className="font-mono" style={{ fontSize: 10, color: C.soft, marginTop: 6 }}>{s.bigO}</div>
-              </button>
-            ))}
+            ].map(s => {
+              const schoolStats = stats.bySchool[s.key];
+              const best = schoolStats?.bestScore;
+              return (
+                <button key={s.key} onClick={() => setSchool(s.key)} style={{
+                  background: school === s.key ? C.cream : 'transparent',
+                  border: `1px solid ${school === s.key ? s.color : C.rule}`,
+                  borderLeft: `4px solid ${s.color}`,
+                  padding: '14px 16px', textAlign: 'left', cursor: 'pointer',
+                  transition: 'all 0.2s', position: 'relative',
+                }}>
+                  <div className="font-serif" style={{ fontSize: 18, fontWeight: 500, color: C.ink, marginBottom: 2 }}>{s.name}</div>
+                  <div className="font-sans" style={{ fontSize: 11, color: s.color, letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 500 }}>{s.tagline}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <span className="font-mono" style={{ fontSize: 10, color: C.soft }}>{s.bigO}</span>
+                    {best !== undefined && (
+                      <span className="font-mono" style={{ fontSize: 9, color: best >= 100 ? C.emerald : C.soft }}>
+                        Best: {best} {'⭐'.repeat(getStars(best))}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
+
+      {/* Deck size */}
+      <div style={{ marginBottom: 32 }}>
+        <div className="font-sans" style={{
+          fontSize: 11, color: C.soft, letterSpacing: '0.18em',
+          textTransform: 'uppercase', marginBottom: 12, fontWeight: 600,
+        }}>
+          {mode !== '2player' ? '3' : '2'}. Difficulty (cards)
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {[
+            { n: 6, label: 'Easy', desc: '6 cards' },
+            { n: 8, label: 'Normal', desc: '8 cards' },
+            { n: 10, label: 'Hard', desc: '10 cards' },
+            { n: 12, label: 'Expert', desc: '12 cards' },
+          ].map(d => (
+            <button key={d.n} onClick={() => setDeckSize(d.n)} style={{
+              flex: 1, background: deckSize === d.n ? C.ink : 'transparent',
+              color: deckSize === d.n ? C.cream : C.ink,
+              border: `1px solid ${C.ink}`, padding: '10px 12px',
+              textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+            }}>
+              <div className="font-sans" style={{ fontSize: 13, fontWeight: 600 }}>{d.label}</div>
+              <div className="font-sans" style={{ fontSize: 10, opacity: 0.7 }}>{d.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* How to Play */}
       <div style={{
@@ -1602,7 +1830,7 @@ const DemoSetup = ({ onStart }) => {
       </div>
 
       <div style={{ textAlign: 'center' }}>
-        <Button onClick={() => onStart(school, mode)}>Begin Round →</Button>
+        <Button onClick={() => onStart(school, mode, deckSize)}>Begin Round →</Button>
       </div>
     </div>
   );
@@ -2314,13 +2542,71 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
 
 const DemoPlay = ({ initial, onReset }) => {
   const [state, dispatch] = useReducer(rootReducer, initial, () =>
-    initialState(initial.school, initial.mode)
+    initialState(initial.school, initial.mode, initial.deckSize || 8)
   );
   const hint = state.mode === 'tutorial' ? getTutorialHint(state, 0) : null;
   const allFinished = state.players.every(p => p.finished);
+  const [statsSaved, setStatsSaved] = useState(false);
+  const [newAchievements, setNewAchievements] = useState([]);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Calculate scores once when finished
+  const scores = allFinished ? state.players.map(p => {
+    const mins = state.mins[p.school];
+    const excess = Math.max(0, p.comparisons - mins);
+    return Math.max(0, Math.round(100 - (100 * excess / mins) - p.penalties * 5));
+  }) : [];
+
+  // Save stats once when round finishes
+  useEffect(() => {
+    if (!allFinished || statsSaved) return;
+    setStatsSaved(true);
+
+    const stats = loadStats();
+    const oldAchievements = ACHIEVEMENTS.filter(a => a.check(stats)).map(a => a.id);
+
+    state.players.forEach((p, i) => {
+      const score = scores[i];
+      const stars = getStars(score);
+      const isPerfect = score >= 100;
+
+      stats.gamesPlayed += 1;
+      stats.totalStars += stars;
+      if (isPerfect) {
+        stats.perfectGames += 1;
+        stats.streak += 1;
+        stats.bestStreak = Math.max(stats.bestStreak, stats.streak);
+      } else {
+        stats.streak = 0;
+      }
+
+      if (!stats.bySchool[p.school]) {
+        stats.bySchool[p.school] = { played: 0, bestScore: 0 };
+      }
+      stats.bySchool[p.school].played += 1;
+      stats.bySchool[p.school].bestScore = Math.max(stats.bySchool[p.school].bestScore, score);
+    });
+
+    saveStats(stats);
+
+    const nowAchievements = ACHIEVEMENTS.filter(a => a.check(stats)).map(a => a.id);
+    const freshUnlocks = nowAchievements.filter(id => !oldAchievements.includes(id));
+    if (freshUnlocks.length > 0) {
+      setNewAchievements(ACHIEVEMENTS.filter(a => freshUnlocks.includes(a.id)));
+    }
+
+    // Show confetti for 3-star scores
+    if (scores.some(s => getStars(s) >= 3)) {
+      setShowConfetti(true);
+    }
+  }, [allFinished, statsSaved, scores, state.players, state.mins]);
+
+  const deckLabel = state.deckSize === 6 ? 'Easy' : state.deckSize === 10 ? 'Hard' : state.deckSize === 12 ? 'Expert' : 'Normal';
 
   return (
-    <div style={{ padding: '40px 40px 48px' }}>
+    <div style={{ padding: '40px 40px 48px', position: 'relative' }}>
+      <Confetti active={showConfetti} />
+
       {/* Top bar */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -2330,7 +2616,7 @@ const DemoPlay = ({ initial, onReset }) => {
           <Eyebrow>
             {state.mode === 'tutorial' ? 'Tutorial' : state.mode === 'practice' ? 'Solo Practice' : '2-Player Hot-Seat'}
             {' · '}
-            Random Deck
+            {state.deckSize} Cards ({deckLabel})
           </Eyebrow>
         </div>
         <button onClick={() => onReset(null)} className="font-mono" style={{
@@ -2383,47 +2669,121 @@ const DemoPlay = ({ initial, onReset }) => {
           animation: 'fadeUp 0.5s ease-out',
         }}>
           <Eyebrow color={C.gold}>Round Complete</Eyebrow>
-          <div style={{ display: 'grid', gridTemplateColumns: state.mode === '2player' ? '1fr 1fr auto' : '1fr auto', gap: 32, marginTop: 16, alignItems: 'center' }}>
+
+          {/* Scores + Stars */}
+          <div style={{ display: 'grid', gridTemplateColumns: state.mode === '2player' ? '1fr 1fr' : '1fr', gap: 24, marginTop: 16 }}>
             {state.players.map((p, i) => {
+              const score = scores[i];
+              const stars = getStars(score);
               const mins = state.mins[p.school];
-              const excess = Math.max(0, p.comparisons - mins);
-              const score = Math.max(0, Math.round(100 - (100 * excess / mins) - p.penalties * 5));
+              const schoolStats = loadStats().bySchool[p.school];
+              const isNewBest = schoolStats && score >= schoolStats.bestScore && schoolStats.played > 1;
               return (
-                <div key={i}>
+                <div key={i} style={{ textAlign: state.mode === '2player' ? 'center' : 'left' }}>
                   <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>
-                    {state.mode === '2player' ? `PLAYER ${i + 1}` : 'YOUR SCORE'}
+                    {state.mode === '2player' ? `PLAYER ${i + 1} — ${SCHOOL_NAMES[p.school]}` : 'YOUR SCORE'}
                   </div>
-                  <div className="font-serif" style={{
-                    fontSize: 56, fontWeight: 500, letterSpacing: '-0.02em', lineHeight: 1, marginTop: 8,
-                  }}>{score}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginTop: 8, justifyContent: state.mode === '2player' ? 'center' : 'flex-start' }}>
+                    <div className="font-serif" style={{
+                      fontSize: 56, fontWeight: 500, letterSpacing: '-0.02em', lineHeight: 1,
+                    }}>{score}</div>
+                    <div style={{ fontSize: 32 }}>
+                      {[1, 2, 3].map(n => (
+                        <span key={n} style={{
+                          opacity: n <= stars ? 1 : 0.2,
+                          transition: 'opacity 0.3s',
+                          transitionDelay: `${n * 0.2}s`,
+                        }}>{n <= stars ? '⭐' : '☆'}</span>
+                      ))}
+                    </div>
+                  </div>
                   <div className="font-sans" style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
                     {p.comparisons} comp · {p.swaps} swap · min {mins}
                   </div>
+                  {isNewBest && (
+                    <div className="font-mono" style={{
+                      fontSize: 10, color: C.gold, letterSpacing: '0.15em',
+                      marginTop: 6, fontWeight: 600,
+                      animation: 'fadeUp 0.5s ease-out',
+                    }}>🏆 NEW PERSONAL BEST!</div>
+                  )}
+                  {score >= 100 && (
+                    <div className="font-mono" style={{
+                      fontSize: 10, color: C.emerald, letterSpacing: '0.15em',
+                      marginTop: 4, fontWeight: 600,
+                    }}>✨ PERFECT — Matched theoretical minimum!</div>
+                  )}
                 </div>
               );
             })}
-            {state.mode === '2player' && (() => {
-              const [p1, p2] = state.players;
-              const s1 = Math.max(0, Math.round(100 - (100 * Math.max(0, p1.comparisons - state.mins[p1.school]) / state.mins[p1.school]) - p1.penalties * 5));
-              const s2 = Math.max(0, Math.round(100 - (100 * Math.max(0, p2.comparisons - state.mins[p2.school]) / state.mins[p2.school]) - p2.penalties * 5));
-              const winner = s1 === s2 ? 'Tie' : s1 > s2 ? 'P1 wins' : 'P2 wins';
-              return (
-                <div>
-                  <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>EFFICIENCY MEDAL</div>
-                  <div className="font-serif" style={{ fontSize: 32, fontWeight: 500, marginTop: 6 }}>{winner}</div>
-                </div>
-              );
-            })()}
-            <div>
-              <button onClick={() => dispatch({ type: 'RESET' })} style={{
-                background: C.cream, color: C.ink, border: 'none',
-                padding: '10px 20px', fontSize: 12, fontWeight: 600,
-                letterSpacing: '0.1em', textTransform: 'uppercase',
-                cursor: 'pointer', fontFamily: 'Inter, sans-serif',
-              }}>
-                Play Again
-              </button>
+          </div>
+
+          {/* 2-player winner */}
+          {state.mode === '2player' && (() => {
+            const winner = scores[0] === scores[1] ? 'Tie' : scores[0] > scores[1] ? 'P1 wins' : 'P2 wins';
+            return (
+              <div style={{ textAlign: 'center', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(244,235,214,0.2)' }}>
+                <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', opacity: 0.7 }}>EFFICIENCY MEDAL</div>
+                <div className="font-serif" style={{ fontSize: 32, fontWeight: 500, marginTop: 6 }}>{winner}</div>
+              </div>
+            );
+          })()}
+
+          {/* New achievements */}
+          {newAchievements.length > 0 && (
+            <div style={{
+              marginTop: 20, padding: '16px 20px',
+              background: 'rgba(201, 162, 39, 0.15)', border: `1px solid rgba(201, 162, 39, 0.4)`,
+              animation: 'fadeUp 0.6s ease-out',
+            }}>
+              <div className="font-mono" style={{ fontSize: 10, color: C.gold, letterSpacing: '0.15em', fontWeight: 600, marginBottom: 10 }}>
+                🎉 NEW ACHIEVEMENT{newAchievements.length > 1 ? 'S' : ''} UNLOCKED!
+              </div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {newAchievements.map(a => (
+                  <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: 24 }}>{a.icon}</span>
+                    <div>
+                      <div className="font-sans" style={{ fontSize: 12, fontWeight: 600, color: C.cream }}>{a.name}</div>
+                      <div className="font-sans" style={{ fontSize: 10, color: 'rgba(244,235,214,0.7)' }}>{a.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
+
+          {/* Streak */}
+          {(() => {
+            const s = loadStats();
+            return s.streak >= 2 ? (
+              <div className="font-mono" style={{
+                textAlign: 'center', marginTop: 16,
+                fontSize: 11, color: C.gold, letterSpacing: '0.1em',
+              }}>
+                🔥 {s.streak} perfect scores in a row!
+              </div>
+            ) : null;
+          })()}
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
+            <button onClick={() => { setStatsSaved(false); setNewAchievements([]); setShowConfetti(false); dispatch({ type: 'RESET' }); }} style={{
+              background: C.cream, color: C.ink, border: 'none',
+              padding: '10px 20px', fontSize: 12, fontWeight: 600,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+            }}>
+              Play Again
+            </button>
+            <button onClick={() => onReset(null)} style={{
+              background: 'transparent', color: C.cream, border: `1px solid rgba(244,235,214,0.3)`,
+              padding: '10px 20px', fontSize: 12, fontWeight: 600,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+            }}>
+              Change Settings
+            </button>
           </div>
         </div>
       )}
@@ -2480,7 +2840,7 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
           {initialConfig ? (
             <DemoPlay initial={initialConfig} onReset={onConfigReset} />
           ) : (
-            <DemoSetup onStart={(sch, m) => onConfigReset({ school: sch, mode: m })} />
+            <DemoSetup onStart={(sch, m, ds) => onConfigReset({ school: sch, mode: m, deckSize: ds })} />
           )}
         </div>
       </div>
