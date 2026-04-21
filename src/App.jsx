@@ -1379,7 +1379,7 @@ const ProblemSection = () => (
     <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
       <Eyebrow>The Problem</Eyebrow>
       <SerifHeading size={54}>
-        Sorting algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
+        Algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
       </SerifHeading>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
         <DecorativeRule width={120} />
@@ -1388,8 +1388,8 @@ const ProblemSection = () => (
         fontSize: 22, color: C.slate, lineHeight: 1.6, marginTop: 36,
         maxWidth: 720, margin: '36px auto 0',
       }}>
-        Most textbooks teach sorting as pseudocode. Most videos teach it as animation. Most
-        students memorize names and forget them by Thursday. There's a better way:
+        Most textbooks teach algorithms as pseudocode. Most videos teach them as animation. Most
+        students memorize names and forget them by Thursday. There{"'"}s a better way:
         <span style={{ color: C.ink, fontStyle: 'italic' }}>&nbsp;make the student become the algorithm.</span>
       </p>
       <div style={{
@@ -1398,19 +1398,19 @@ const ProblemSection = () => (
       }}>
         {[
           {
-            stat: '0.8',
-            label: "effect size (Cohen\u2019s d)",
-            body: "When students physically act out STEM concepts vs. passive lecture \u2014 a \u201Clarge\u201D advantage by statistical standards.",
+            stat: '2\u00D7',
+            label: 'better learning gains',
+            body: 'Students who physically act out STEM concepts score roughly twice as high as those in passive lectures (effect size d\u2009=\u20090.8).',
           },
           {
             stat: '28',
-            label: 'studies reviewed',
-            body: 'in a systematic review found positive learning outcomes for hands-on "unplugged" computer-science activities.',
+            label: 'peer-reviewed studies',
+            body: 'A systematic review of hands-on "unplugged" CS activities found positive learning outcomes across every age group.',
           },
           {
-            stat: '4 yrs',
-            label: 'of classroom trials',
-            body: "confirmed technology-enhanced embodied learning significantly improves students\u2019 retention and memory.",
+            stat: '4+',
+            label: 'years of classroom evidence',
+            body: 'Multi-year trials confirm that embodied, technology-enhanced learning significantly improves retention and memory.',
           },
         ].map((item, i) => (
           <div key={i}>
@@ -1420,7 +1420,12 @@ const ProblemSection = () => (
             }}>
               {item.stat}
             </div>
-            <Eyebrow>{item.label}</Eyebrow>
+            <div className="font-mono" style={{
+              fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase',
+              color: C.soft, marginTop: 12,
+            }}>
+              {item.label}
+            </div>
             <p className="font-sans" style={{
               fontSize: 14, color: C.slate, lineHeight: 1.6, marginTop: 12,
             }}>
