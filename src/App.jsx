@@ -1253,7 +1253,7 @@ const Nav = ({ onPlayClick }) => (
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-        {['The Game', 'How it Works', 'Demo', 'For Teachers'].map(link => (
+        {['The Game', 'How it Works', 'Demo'].map(link => (
           <a
             key={link}
             href={`#${link.toLowerCase().replace(/\s/g, '-')}`}
@@ -1400,7 +1400,7 @@ const ProblemSection = () => (
           {
             stat: '2\u00D7',
             label: 'better learning gains',
-            body: 'Students who physically act out STEM concepts score roughly twice as high as those in passive lectures (effect size d\u2009=\u20090.8).',
+            body: 'Students who physically act out STEM concepts score roughly twice as high as those in passive lectures.',
           },
           {
             stat: '28',
@@ -3188,181 +3188,6 @@ const TestimonialsSection = () => (
   </section>
 );
 
-const ForTeachersSection = () => (
-  <section id="for-teachers" style={{ padding: '120px 32px' }}>
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
-        <div>
-          <Eyebrow>For Educators</Eyebrow>
-          <SerifHeading size={54}>A <span style={{ fontStyle: 'italic' }}>50-minute</span> lesson plan, built in.</SerifHeading>
-          <p className="font-sans" style={{
-            fontSize: 15, color: C.slate, lineHeight: 1.7, marginTop: 24, maxWidth: 480,
-          }}>
-            The Teacher's Edition ships with a ready-to-run lesson plan mapped to CSTA standards
-            2-AP-11, 2-AP-13, 3A-AP-14, and 3A-AP-18. Discussion prompts. Exit ticket rubric.
-            Stealth assessment signals. Zero prep required.
-          </p>
-          <ul style={{ listStyle: 'none', marginTop: 32 }}>
-            {[
-              'Aligned to CSTA K-12 standards',
-              'Pre-configured scenario packs',
-              'Rubric-based stealth assessment',
-              'Works with 20-28 students in groups of 4',
-            ].map((item, i) => (
-              <li key={i} style={{
-                padding: '12px 0', borderBottom: i === 3 ? 'none' : `1px solid ${C.rule}`,
-                display: 'flex', alignItems: 'center', gap: 16,
-              }}>
-                <span className="font-mono" style={{
-                  fontSize: 10, color: C.gold, letterSpacing: '0.15em', fontWeight: 600,
-                }}>
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="font-sans" style={{ fontSize: 14, color: C.ink }}>{item}</span>
-              </li>
-            ))}
-          </ul>
-          <div style={{ marginTop: 40 }}>
-            <Button variant="gold">Download Teacher's Edition PDF</Button>
-          </div>
-        </div>
-
-        {/* Lesson plan preview */}
-        <div style={{
-          background: C.paper, padding: 36, border: `1px solid ${C.rule}`,
-          position: 'relative',
-        }}>
-          {[[0,0], [0,1], [1,0], [1,1]].map(([r, c]) => (
-            <div key={`${r}${c}`} style={{
-              position: 'absolute',
-              [r ? 'bottom' : 'top']: -1,
-              [c ? 'right' : 'left']: -1,
-              width: 14, height: 14, borderColor: C.gold,
-              borderStyle: 'solid', borderWidth: 0,
-              [r ? 'borderBottomWidth' : 'borderTopWidth']: 2,
-              [c ? 'borderRightWidth' : 'borderLeftWidth']: 2,
-            }} />
-          ))}
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <Eyebrow color={C.gold}>Sample Lesson</Eyebrow>
-            <SerifHeading size={24}>Day 1 · Bubble vs. Quick</SerifHeading>
-          </div>
-          <div>
-            {[
-              ['00:00', 'Hook', 'Show 8 unsorted cards. Ask: "Fewest moves?"'],
-              ['00:05', 'Introduce', 'Demo Bubble and Quick primitives on display cards.'],
-              ['00:15', 'Play', 'Groups of 4 race. Same starting deck. Tally comparisons.'],
-              ['00:35', 'Debrief', 'Whole-class discussion. Surface Big-O organically.'],
-              ['00:45', 'Exit Ticket', '3-sentence explanation of Bubble Sort.'],
-            ].map(([time, phase, desc], i) => (
-              <div key={i} style={{
-                display: 'grid', gridTemplateColumns: '60px 100px 1fr',
-                gap: 16, padding: '12px 0',
-                borderBottom: i === 4 ? 'none' : `1px solid ${C.rule}`,
-              }}>
-                <div className="font-mono" style={{ fontSize: 10, color: C.soft, letterSpacing: '0.1em' }}>{time}</div>
-                <div className="font-sans" style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{phase}</div>
-                <div className="font-sans" style={{ fontSize: 12, color: C.slate, lineHeight: 1.5 }}>{desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-);
-
-const PricingSection = () => (
-  <section style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}` }}>
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: 56 }}>
-        <Eyebrow>Get the Game</Eyebrow>
-        <SerifHeading size={54}>Three ways in.</SerifHeading>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-        {[
-          {
-            name: 'Print & Play',
-            price: 'Free',
-            desc: 'The print-and-cut POC PDF. Two schools, 24 cards, one scenario.',
-            features: ['24 Dragon Cards', 'Bubble + Quick Schools', 'Quick-start rules', 'Digital download'],
-            cta: 'Download PDF',
-            featured: false,
-          },
-          {
-            name: 'Standard Edition',
-            price: '$34.99',
-            desc: 'The full physical game. All seven schools, scenario deck, wooden components.',
-            features: ['96 linen-finish cards', '7 School Boards', 'Wooden pawns & pivot hats', '18 scenarios', 'Rulebook + Teacher guide'],
-            cta: 'Pre-order',
-            featured: true,
-          },
-          {
-            name: 'Classroom Pack',
-            price: '$249',
-            desc: 'Eight Standard copies bundled. Lesson plan, rubric, CSTA alignment guide.',
-            features: ['8 Standard copies', 'Teacher\'s Edition binder', 'Scenario expansion pack', 'Digital companion access'],
-            cta: 'Request Quote',
-            featured: false,
-          },
-        ].map((tier, i) => (
-          <div key={i} style={{
-            background: tier.featured ? C.ink : C.cream,
-            color: tier.featured ? C.cream : C.ink,
-            padding: 36,
-            border: `1px solid ${tier.featured ? C.ink : C.rule}`,
-            position: 'relative',
-            transform: tier.featured ? 'translateY(-12px)' : 'none',
-          }}>
-            {tier.featured && (
-              <div style={{
-                position: 'absolute', top: -10, right: 16,
-                background: C.gold, color: C.ink, padding: '4px 10px',
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.15em',
-                fontFamily: 'Inter, sans-serif', textTransform: 'uppercase',
-              }}>Most Popular</div>
-            )}
-            <div className="font-serif" style={{
-              fontSize: 24, fontWeight: 500, marginBottom: 8,
-              letterSpacing: '-0.01em',
-            }}>
-              {tier.name}
-            </div>
-            <div className="font-serif" style={{
-              fontSize: 48, fontWeight: 500, marginBottom: 16,
-              letterSpacing: '-0.02em', color: tier.featured ? C.gold : C.ink,
-            }}>
-              {tier.price}
-            </div>
-            <p className="font-sans" style={{
-              fontSize: 13, opacity: 0.75, lineHeight: 1.6, marginBottom: 24,
-              minHeight: 48,
-            }}>
-              {tier.desc}
-            </p>
-            <ul style={{ listStyle: 'none', marginBottom: 32 }}>
-              {tier.features.map((f, j) => (
-                <li key={j} className="font-sans" style={{
-                  fontSize: 13, padding: '6px 0', display: 'flex', gap: 10,
-                }}>
-                  <span style={{ color: tier.featured ? C.gold : C.emerald }}>✓</span>
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
-            <Button
-              variant={tier.featured ? 'gold' : 'primary'}
-              fullWidth
-            >
-              {tier.cta}
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-);
-
 const Footer = () => (
   <footer style={{
     background: C.dark, color: C.cream, padding: '80px 32px 40px',
@@ -3452,8 +3277,6 @@ export default function App() {
           onConfigReset={(cfg) => setDemoConfig(cfg)}
         />
         <TestimonialsSection />
-        <ForTeachersSection />
-        <PricingSection />
       </main>
       <Footer />
     </div>
