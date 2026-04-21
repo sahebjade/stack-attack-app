@@ -2734,13 +2734,13 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <Eyebrow color={C.gold}>Play Now</Eyebrow>
           <SerifHeading size={54} color={C.cream}>
-            Try it <span style={{ fontStyle: 'italic' }}>now.</span>
+            Learn by <span style={{ fontStyle: 'italic' }}>doing.</span>
           </SerifHeading>
           <p className="font-serif" style={{
             fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
             maxWidth: 520, margin: '20px auto 0', lineHeight: 1.5,
           }}>
-            A slice of the full game. Full rules, real scoring. Tutorial mode holds your hand the first time through.
+            Pick an algorithm, sort the deck, beat the minimum. Tutorial mode guides you through your first round.
           </p>
         </div>
 
