@@ -1,4 +1,17 @@
-import React, { useReducer, useState, useRef, useCallback } from 'react';
+import React, { useReducer, useState, useRef, useCallback, useEffect } from 'react';
+
+// ============================================================================
+// RESPONSIVE HOOK
+// ============================================================================
+const useIsMobile = (breakpoint = 640) => {
+  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return w < breakpoint;
+};
 
 // ============================================================================
 // GAME LOGIC
@@ -851,7 +864,7 @@ const GlobalStyles = () => (
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { background: ${C.cream}; color: ${C.ink}; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+    html, body { background: ${C.cream}; color: ${C.ink}; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 
     .font-serif { font-family: 'Cormorant Garamond', Georgia, serif; }
     .font-sans { font-family: 'Inter', sans-serif; }
@@ -913,6 +926,41 @@ const GlobalStyles = () => (
     .subtle-scroll::-webkit-scrollbar-thumb { background: ${C.rule}; border-radius: 3px; }
 
     button { font-family: inherit; }
+
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+      .hero-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
+      .hero-visual { display: none !important; }
+      .hero-h1 { font-size: 48px !important; }
+      .hero-section { min-height: auto !important; padding: 40px 16px 60px !important; }
+      .nav-inner { padding: 12px 16px !important; }
+      .nav-links { display: none !important; }
+      .section-padding { padding: 48px 16px !important; }
+      .stat-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
+      .stat-number { font-size: 36px !important; }
+      .steps-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+      .step-card { padding: 24px !important; }
+      .schools-grid { grid-template-columns: repeat(3, 1fr) !important; }
+      .school-cell { padding: 12px 8px !important; }
+      .school-symbol { font-size: 20px !important; }
+      .school-name-cell { font-size: 12px !important; }
+      .setup-container { padding: 24px 16px !important; }
+      .mode-grid { grid-template-columns: 1fr !important; }
+      .school-select-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+      .difficulty-row { flex-wrap: wrap !important; }
+      .difficulty-row > button { flex: 1 1 40% !important; }
+      .howto-box { padding: 16px 12px !important; }
+      .player-panel { padding: 12px !important; }
+      .lane-row { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+      .serif-desc { font-size: 16px !important; max-width: 100% !important; }
+      .section-heading { font-size: 28px !important; }
+      .section-subhead { font-size: 24px !important; }
+    }
+    @media (max-width: 480px) {
+      .hero-h1 { font-size: 36px !important; }
+      .schools-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .school-select-grid { grid-template-columns: 1fr !important; }
+    }
   `}</style>
 );
 
@@ -989,7 +1037,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size }) => {
 
 const Lane = ({ lane, highlights, onCardClick, clickablePredicate, compact, showIndex = true }) => {
   return (
-    <div style={{ display: 'flex', gap: compact ? 4 : 5, justifyContent: 'center', flexWrap: 'nowrap' }}>
+    <div className="lane-row" style={{ display: 'flex', gap: compact ? 4 : 5, justifyContent: 'center', flexWrap: 'nowrap' }}>
       {lane.map((card, idx) => {
         const highlight = highlights[idx];
         const clickable = clickablePredicate ? clickablePredicate(idx, card) : false;
@@ -1029,8 +1077,8 @@ const Eyebrow = ({ children, color = C.soft }) => (
   }}>{children}</div>
 );
 
-const SerifHeading = ({ children, size = 36, color = C.ink, italic = false }) => (
-  <h2 className="font-serif" style={{
+const SerifHeading = ({ children, size = 36, color = C.ink, italic = false, className = '' }) => (
+  <h2 className={`font-serif ${className}`} style={{
     fontSize: size, fontWeight: 500, color, margin: 0,
     letterSpacing: '-0.02em', lineHeight: 1.05,
     fontStyle: italic ? 'italic' : 'normal',
@@ -1110,7 +1158,7 @@ const Nav = ({ onPlayClick }) => (
     backdropFilter: 'blur(8px)',
     borderBottom: `1px solid ${C.rule}`,
   }}>
-    <div style={{
+    <div className="nav-inner" style={{
       maxWidth: 1280, margin: '0 auto', padding: '18px 32px',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     }}>
@@ -1125,7 +1173,7 @@ const Nav = ({ onPlayClick }) => (
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-        {['The Game', 'How it Works'].map(link => (
+        <span className="nav-links" style={{ display: 'contents' }}>{['The Game', 'How it Works'].map(link => (
           <a
             key={link}
             href={`#${link.toLowerCase().replace(/\s/g, '-')}`}
@@ -1137,7 +1185,7 @@ const Nav = ({ onPlayClick }) => (
           >
             {link}
           </a>
-        ))}
+        ))}</span>
         <Button small onClick={onPlayClick}>Play Now</Button>
       </div>
     </div>
@@ -1145,15 +1193,15 @@ const Nav = ({ onPlayClick }) => (
 );
 
 const Hero = ({ onPlayClick }) => (
-  <section style={{
+  <section className="hero-section" style={{
     minHeight: '88vh', display: 'flex', alignItems: 'center',
     padding: '80px 32px 120px', position: 'relative',
   }}>
     <div style={{ maxWidth: 1280, margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 80, alignItems: 'center' }}>
+      <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 80, alignItems: 'center' }}>
         <div style={{ animation: 'fadeUp 0.8s ease-out' }}>
           <Eyebrow color={C.gold}>A Board Game That Teaches Algorithms</Eyebrow>
-          <h1 className="font-serif" style={{
+          <h1 className="font-serif hero-h1" style={{
             fontSize: 108, fontWeight: 500, color: C.ink, lineHeight: 0.95,
             letterSpacing: '-0.03em', margin: '24px 0 32px',
           }}>
@@ -1162,7 +1210,7 @@ const Hero = ({ onPlayClick }) => (
             Order the<br/>
             <span style={{ fontStyle: 'italic', color: C.gold }}>dragons.</span>
           </h1>
-          <p className="font-serif" style={{
+          <p className="font-serif serif-desc" style={{
             fontSize: 22, color: C.slate, lineHeight: 1.5,
             maxWidth: 540, fontStyle: 'italic', marginBottom: 40,
           }}>
@@ -1182,7 +1230,7 @@ const Hero = ({ onPlayClick }) => (
 
         </div>
         {/* Hero visual: floating dragon cards */}
-        <div style={{ position: 'relative', height: 560, animation: 'fadeIn 1.2s ease-out' }}>
+        <div className="hero-visual" style={{ position: 'relative', height: 560, animation: 'fadeIn 1.2s ease-out' }}>
           {[
             { v: 41, x: 0, y: 40, rot: -6, z: 1 },
             { v: 17, x: 100, y: 0, rot: 4, z: 2 },
@@ -1221,16 +1269,16 @@ const Hero = ({ onPlayClick }) => (
 );
 
 const ProblemSection = () => (
-  <section style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}` }}>
+  <section className="section-padding" style={{ padding: '120px 32px', background: C.paper, borderTop: `1px solid ${C.rule}`, borderBottom: `1px solid ${C.rule}` }}>
     <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
       <Eyebrow>The Problem</Eyebrow>
       <SerifHeading size={54}>
-        Algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.
+        <span className="section-heading">Algorithms are famously <span style={{ fontStyle: 'italic' }}>boring</span> to learn.</span>
       </SerifHeading>
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
         <DecorativeRule width={120} />
       </div>
-      <p className="font-serif" style={{
+      <p className="font-serif serif-desc" style={{
         fontSize: 22, color: C.slate, lineHeight: 1.6, marginTop: 36,
         maxWidth: 720, margin: '36px auto 0',
       }}>
@@ -1238,7 +1286,7 @@ const ProblemSection = () => (
         students memorize terms and forget them by Thursday. There{"'"}s a better way:
         <span style={{ color: C.ink, fontStyle: 'italic' }}>&nbsp;make the student become the process.</span>
       </p>
-      <div style={{
+      <div className="stat-grid" style={{
         marginTop: 80, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
         gap: 48, textAlign: 'left',
       }}>
@@ -1260,7 +1308,7 @@ const ProblemSection = () => (
           },
         ].map((item, i) => (
           <div key={i}>
-            <div className="font-serif" style={{
+            <div className="font-serif stat-number" style={{
               fontSize: 64, fontWeight: 500, color: C.crimson,
               letterSpacing: '-0.03em', lineHeight: 1,
             }}>
@@ -1290,17 +1338,17 @@ const ProblemSection = () => (
 );
 
 const HowItWorks = () => (
-  <section id="how-it-works" style={{ padding: '120px 32px' }}>
+  <section id="how-it-works" className="section-padding" style={{ padding: '120px 32px' }}>
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ textAlign: 'center', marginBottom: 80 }}>
         <Eyebrow>How it Works</Eyebrow>
-        <SerifHeading size={54}>Three moves. Seven schools. One kingdom.</SerifHeading>
+        <SerifHeading size={54} className="section-heading">Three moves. Seven schools. One kingdom.</SerifHeading>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
           <DecorativeRule width={120} />
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32 }}>
+      <div className="steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 32 }}>
         {[
           {
             num: '01',
@@ -1321,7 +1369,7 @@ const HowItWorks = () => (
             color: C.emerald,
           },
         ].map((step, i) => (
-          <div key={i} style={{
+          <div key={i} className="step-card" style={{
             background: C.paper, border: `1px solid ${C.rule}`,
             padding: 40, position: 'relative',
           }}>
@@ -1351,9 +1399,9 @@ const HowItWorks = () => (
       <div style={{ marginTop: 100 }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <Eyebrow>The Seven Schools</Eyebrow>
-          <SerifHeading size={40} italic>Each one an algorithm. Each one a strategy.</SerifHeading>
+          <SerifHeading size={40} className="section-subhead" italic>Each one an algorithm. Each one a strategy.</SerifHeading>
         </div>
-        <div style={{
+        <div className="schools-grid" style={{
           display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2,
           border: `1px solid ${C.rule}`, background: C.rule,
         }}>
@@ -1366,15 +1414,15 @@ const HowItWorks = () => (
             { name: 'Heap', symbol: '△', complexity: 'O(n log n)', color: C.slate },
             { name: 'Radix', symbol: '◙', complexity: 'O(nk)', color: C.ink },
           ].map((school, i) => (
-            <div key={i} style={{
+            <div key={i} className="school-cell" style={{
               background: C.paper, padding: '28px 16px', textAlign: 'center',
             }}>
-              <div style={{
+              <div className="school-symbol" style={{
                 fontSize: 28, color: school.color, marginBottom: 10,
               }}>
                 {school.symbol}
               </div>
-              <div className="font-serif" style={{
+              <div className="font-serif school-name-cell" style={{
                 fontSize: 15, fontWeight: 500, color: C.ink, marginBottom: 6,
               }}>
                 {school.name}
@@ -1535,7 +1583,7 @@ const DemoSetup = ({ onStart }) => {
   const info = howToPlay[school];
 
   return (
-    <div style={{ padding: '48px 56px' }}>
+    <div className="setup-container" style={{ padding: '48px 56px' }}>
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <Eyebrow color={C.gold}>Ready to Play</Eyebrow>
         <SerifHeading size={40}>Configure your round</SerifHeading>
@@ -1551,7 +1599,7 @@ const DemoSetup = ({ onStart }) => {
         }}>
           1. Mode
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+        <div className="mode-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
           {[
             { key: 'tutorial', label: 'Tutorial', desc: 'Hints tell you what to do. For learning.' },
             { key: 'practice', label: 'Solo Practice', desc: 'You decide. Wrong calls = penalty.' },
@@ -1576,7 +1624,7 @@ const DemoSetup = ({ onStart }) => {
           }}>
             2. School
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <div className="school-select-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
             {[
               { key: 'bubble', name: 'Bubble Monks', tagline: 'Patient. Pairwise.', bigO: 'O(n²)', color: C.gold },
               { key: 'quick', name: 'Quick Order', tagline: 'Bold. Partitioning.', bigO: 'O(n log n)', color: C.crimson },
@@ -1609,7 +1657,7 @@ const DemoSetup = ({ onStart }) => {
         }}>
           3. Difficulty (cards)
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="difficulty-row" style={{ display: 'flex', gap: 10 }}>
           {[
             { n: 6, label: 'Easy', desc: '6 cards' },
             { n: 8, label: 'Normal', desc: '8 cards' },
@@ -1630,7 +1678,7 @@ const DemoSetup = ({ onStart }) => {
       </div>
 
       {/* How to Play */}
-      <div style={{
+      <div className="howto-box" style={{
         marginBottom: 32, padding: '20px 24px',
         background: `${info.color}08`, border: `1px solid ${info.color}30`,
         borderLeft: `4px solid ${info.color}`,
@@ -1711,7 +1759,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
   }
 
   return (
-    <div style={{
+    <div className="player-panel" style={{
       border: `1px solid ${C.rule}`,
       padding: 24,
       transition: 'all 0.3s ease',
@@ -2748,11 +2796,12 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
 
 const Footer = () => (
   <footer style={{
-    background: C.dark, color: C.cream, padding: '32px',
+    background: C.dark, color: C.cream, padding: '32px 16px',
   }}>
     <div style={{
       maxWidth: 1200, margin: '0 auto',
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      flexWrap: 'wrap', gap: 8,
     }}>
       <div className="font-mono" style={{
         fontSize: 10, color: 'rgba(244, 235, 214, 0.5)', letterSpacing: '0.15em',
