@@ -994,7 +994,7 @@ const DragonCard = ({ value, locked, highlight, compact = false, size, mobile = 
     highlight === 'blue' ? 'rgba(44, 74, 127, 0.15)' :
     highlight === 'red' ? 'rgba(168, 50, 43, 0.12)' : 'transparent';
 
-  const s = size || (mobile ? { w: 36, h: 52, fs: 14, bar: 5 } : (compact ? { w: 48, h: 68, fs: 18, bar: 7 } : { w: 64, h: 90, fs: 24, bar: 9 }));
+  const s = size || (mobile ? { w: 44, h: 62, fs: 16, bar: 6 } : (compact ? { w: 48, h: 68, fs: 18, bar: 7 } : { w: 64, h: 90, fs: 24, bar: 9 }));
 
   return (
     <div className="dragon-card-interactive" style={{
@@ -1732,6 +1732,42 @@ const TallyStrip = ({ label, value, max = 30, color = C.ink }) => {
           transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
         }} />
       </div>
+    </div>
+  );
+};
+
+const ActivityLog = ({ log }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 24 }}>
+      <button onClick={() => setOpen(!open)} style={{
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 6, padding: 0,
+      }}>
+        <span className="font-sans" style={{
+          fontSize: 10, color: C.soft, letterSpacing: '0.18em',
+          textTransform: 'uppercase', fontWeight: 600,
+        }}>Activity Log ({log.length})</span>
+        <span style={{ fontSize: 10, color: C.soft, transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▶</span>
+      </button>
+      {open && (
+        <div className="subtle-scroll" style={{
+          background: C.paper, border: `1px solid ${C.rule}`,
+          padding: '12px 16px', maxHeight: 180, overflowY: 'auto',
+          fontSize: 11, lineHeight: 1.5, marginTop: 8,
+        }}>
+          {log.slice().reverse().map((entry, i) => (
+            <div key={log.length - 1 - i} className="font-sans" style={{
+              padding: '4px 0',
+              color: entry.type === 'lock' ? C.gold :
+                     entry.type === 'penalty' ? C.crimson :
+                     entry.type === 'done' ? C.emerald :
+                     entry.type === 'start' ? C.soft : C.ink,
+              fontWeight: (entry.type === 'lock' || entry.type === 'done') ? 600 : 400,
+            }}>{entry.text}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -2740,28 +2776,7 @@ const DemoPlay = ({ initial, onReset }) => {
       )}
 
       {/* Activity log */}
-      <div style={{ marginTop: 24 }}>
-        <div className="font-sans" style={{
-          fontSize: 10, color: C.soft, letterSpacing: '0.18em',
-          textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
-        }}>Activity Log</div>
-        <div className="subtle-scroll" style={{
-          background: C.paper, border: `1px solid ${C.rule}`,
-          padding: '12px 16px', maxHeight: 180, overflowY: 'auto',
-          fontSize: 11, lineHeight: 1.5,
-        }}>
-          {state.log.slice().reverse().map((entry, i) => (
-            <div key={state.log.length - 1 - i} className="font-sans" style={{
-              padding: '4px 0',
-              color: entry.type === 'lock' ? C.gold :
-                     entry.type === 'penalty' ? C.crimson :
-                     entry.type === 'done' ? C.emerald :
-                     entry.type === 'start' ? C.soft : C.ink,
-              fontWeight: (entry.type === 'lock' || entry.type === 'done') ? 600 : 400,
-            }}>{entry.text}</div>
-          ))}
-        </div>
-      </div>
+      <ActivityLog log={state.log} />
     </div>
   );
 };
