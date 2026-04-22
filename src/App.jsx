@@ -1966,10 +1966,10 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
 
       {/* Pivot/pawn indicator row */}
       {!p.finished && p.school === 'bubble' && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(2px, 0.5vw, 6px)', marginBottom: 4, maxWidth: 900, margin: '0 auto 4px' }}>
           {p.lane.map((_, idx) => (
             <div key={idx} className="font-mono" style={{
-              width: 64, textAlign: 'center', fontSize: 9,
+              flex: '1 1 0', minWidth: 0, textAlign: 'center', fontSize: 'clamp(7px, 1.2vw, 9px)',
               color: idx === p.pawn ? C.cobalt : 'transparent',
               letterSpacing: '0.1em', fontWeight: 600,
             }}>▼ PAWN</div>
@@ -1977,10 +1977,10 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
         </div>
       )}
       {!p.finished && p.school === 'quick' && p.pivotIdx !== null && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(2px, 0.5vw, 6px)', marginBottom: 4, maxWidth: 900, margin: '0 auto 4px' }}>
           {p.lane.map((_, idx) => (
             <div key={idx} className="font-mono" style={{
-              width: 64, textAlign: 'center', fontSize: 9,
+              flex: '1 1 0', minWidth: 0, textAlign: 'center', fontSize: 'clamp(7px, 1.2vw, 9px)',
               color: idx === p.pivotIdx ? C.gold : 'transparent',
               letterSpacing: '0.1em', fontWeight: 600,
             }}>♛ PIVOT</div>
@@ -1988,7 +1988,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
         </div>
       )}
       {!p.finished && p.school === 'insertion' && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(2px, 0.5vw, 6px)', marginBottom: 4, maxWidth: 900, margin: '0 auto 4px' }}>
           {p.lane.map((_, idx) => {
             const heldIdx = p.heldCardIdx !== null ? p.heldCardIdx : p.insertionSorted;
             const isHeld = idx === heldIdx;
@@ -1996,7 +1996,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
             const isScan = p.scanPos !== null && idx === p.scanPos;
             return (
               <div key={idx} className="font-mono" style={{
-                width: 64, textAlign: 'center', fontSize: 9,
+                flex: '1 1 0', minWidth: 0, textAlign: 'center', fontSize: 'clamp(7px, 1.2vw, 9px)',
                 color: isHeld ? C.emerald : isScan ? C.cobalt : isSorted ? C.soft : 'transparent',
                 letterSpacing: '0.1em', fontWeight: 600,
               }}>
@@ -2007,14 +2007,14 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
         </div>
       )}
       {!p.finished && p.school === 'selection' && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(2px, 0.5vw, 6px)', marginBottom: 4, maxWidth: 900, margin: '0 auto 4px' }}>
           {p.lane.map((_, idx) => {
             const isScanStart = idx === p.selectionScanStart;
             const isMin = idx === p.selectionMinIdx && p.selectionPhase === 'scanning';
             const isScan = idx === p.selectionScanIdx && p.selectionPhase === 'scanning';
             return (
               <div key={idx} className="font-mono" style={{
-                width: 64, textAlign: 'center', fontSize: 9,
+                flex: '1 1 0', minWidth: 0, textAlign: 'center', fontSize: 'clamp(7px, 1.2vw, 9px)',
                 color: isMin ? C.violet : isScan ? C.cobalt : isScanStart && !isMin ? C.soft : 'transparent',
                 letterSpacing: '0.1em', fontWeight: 600,
               }}>{isMin ? '★ MIN' : isScan ? '▼ SCAN' : ''}</div>
