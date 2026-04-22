@@ -2424,10 +2424,10 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
           </div>
           <ComparePrompt leftLabel="THIS CARD" leftVal={scanVal} rightLabel="CURRENT SMALLEST" rightVal={minVal}>
             <Button variant="swap" small onClick={() => dispatch({ type: 'SELECTION_EXECUTE', isNewMin: true, playerIdx })}>
-              Yes, {scanVal} &lt; {minVal} → New Smallest
+              {scanVal} &lt; {minVal} → New Smallest
             </Button>
             <Button variant="keep" small onClick={() => dispatch({ type: 'SELECTION_EXECUTE', isNewMin: false, playerIdx })}>
-              No, {scanVal} ≥ {minVal} → Keep Looking
+              {scanVal} ≥ {minVal} → Keep Looking
             </Button>
           </ComparePrompt>
         </div>
