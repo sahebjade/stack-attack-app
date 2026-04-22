@@ -1302,16 +1302,6 @@ const Hero = ({ onPlayClick }) => (
         </div>
       </div>
     </div>
-    {/* Scroll indicator */}
-    <div style={{
-      position: 'absolute', bottom: 32, left: '50%',
-      transform: 'translateX(-50%)',
-      fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
-      color: C.soft, letterSpacing: '0.25em', textTransform: 'uppercase',
-      animation: 'fadeIn 1.5s ease-out 1.2s backwards',
-    }}>
-      ↓ Scroll
-    </div>
   </section>
 );
 
