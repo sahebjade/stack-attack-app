@@ -2365,10 +2365,10 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
           </div>
           <ComparePrompt leftLabel="HOLDING" leftVal={heldVal} rightLabel="IN THE WAY?" rightVal={cmpVal}>
             <Button variant="swap" small onClick={() => dispatch({ type: 'INSERTION_EXECUTE', shift: true, playerIdx })}>
-              Yes, {cmpVal} &gt; {heldVal} → Slide {cmpVal} right
+              {cmpVal} &gt; {heldVal} → Slide {cmpVal} right
             </Button>
             <Button variant="keep" small onClick={() => dispatch({ type: 'INSERTION_EXECUTE', shift: false, playerIdx })}>
-              No, {heldVal} fits here → Drop it
+              {heldVal} fits here → Drop it
             </Button>
           </ComparePrompt>
         </div>
