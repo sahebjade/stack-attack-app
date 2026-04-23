@@ -3205,6 +3205,153 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
   return null;
 };
 
+// Complexity Scoreboard — shown after finishing a round
+const ComplexityScoreboard = ({ mins, currentSchool, deckSize, playerComps }) => {
+  const schools = [
+    { key: 'bubble', name: 'Bubble', bigO: 'O(n²)', color: C.gold },
+    { key: 'selection', name: 'Selection', bigO: 'O(n²)', color: C.violet },
+    { key: 'insertion', name: 'Insertion', bigO: 'O(n²)', color: C.emerald },
+    { key: 'heap', name: 'Heap', bigO: 'O(n log n)', color: C.slate },
+    { key: 'merge', name: 'Merge', bigO: 'O(n log n)', color: C.cobalt },
+    { key: 'quick', name: 'Quick', bigO: 'O(n log n)', color: C.crimson },
+    { key: 'radix', name: 'Radix', bigO: 'O(nk)', color: C.teal },
+  ];
+  const maxVal = Math.max(...schools.map(s => mins[s.key] || 0), playerComps);
+
+  // "What If?" projections for current algorithm
+  const projections = [
+    { n: 100, label: '100 cards' },
+    { n: 1000, label: '1,000 cards' },
+    { n: 1000000, label: '1,000,000 cards' },
+  ];
+  const project = (school, n) => {
+    if (school === 'bubble' || school === 'selection') return Math.round(n * (n - 1) / 2);
+    if (school === 'insertion') return Math.round(n * (n - 1) / 4); // avg case
+    if (school === 'heap' || school === 'merge' || school === 'quick') return Math.round(n * Math.log2(n));
+    if (school === 'radix') return n * 2;
+    return n * n;
+  };
+  const formatNum = (n) => {
+    if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+    if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+    return String(n);
+  };
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      {/* Bar chart header */}
+      <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
+        ALL ALGORITHMS ON YOUR {deckSize}-CARD DECK
+      </div>
+
+      {/* Bar chart */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {schools.map(s => {
+          const val = s.key === currentSchool ? playerComps : (mins[s.key] || 0);
+          const minVal = mins[s.key] || 0;
+          const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
+          const isCurrent = s.key === currentSchool;
+          return (
+            <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="font-mono" style={{
+                width: 65, fontSize: 9, color: isCurrent ? C.cream : 'rgba(244,235,214,0.5)',
+                letterSpacing: '0.05em', fontWeight: isCurrent ? 700 : 400, textAlign: 'right',
+                whiteSpace: 'nowrap',
+              }}>
+                {s.name}
+              </div>
+              <div style={{ flex: 1, height: 14, background: 'rgba(244,235,214,0.08)', borderRadius: 2, position: 'relative', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${pct}%`, background: s.color,
+                  borderRadius: 2, transition: 'width 0.6s ease-out',
+                  opacity: isCurrent ? 1 : 0.6,
+                }} />
+                {isCurrent && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, height: '100%',
+                    width: `${maxVal > 0 ? (minVal / maxVal) * 100 : 0}%`,
+                    borderRight: `2px dashed ${C.cream}`, opacity: 0.4,
+                  }} />
+                )}
+              </div>
+              <div className="font-mono" style={{
+                width: 28, fontSize: 10, color: isCurrent ? C.cream : 'rgba(244,235,214,0.5)',
+                fontWeight: isCurrent ? 700 : 400, textAlign: 'right',
+              }}>
+                {val}
+              </div>
+              <div className="font-mono" style={{
+                width: 62, fontSize: 8, color: s.color, letterSpacing: '0.06em',
+                fontWeight: 600, textAlign: 'left',
+              }}>
+                {s.bigO}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* What If? Projector */}
+      <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(244,235,214,0.06)', borderRadius: 4 }}>
+        <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
+          WHAT IF YOU HAD MORE CARDS?
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(3, 1fr)', gap: '4px 12px', alignItems: 'center' }}>
+          <div />
+          {projections.map(p => (
+            <div key={p.n} className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', textAlign: 'right', letterSpacing: '0.08em' }}>
+              {p.label}
+            </div>
+          ))}
+          {/* Show current algo vs a fast one */}
+          {[currentSchool, ...(
+            ['bubble', 'selection', 'insertion'].includes(currentSchool)
+              ? ['merge']
+              : currentSchool === 'radix' ? ['bubble'] : ['bubble']
+          ).filter(s => s !== currentSchool)].map(school => {
+            const name = SCHOOL_NAMES[school]?.split(' ')[0] || school;
+            const color = schools.find(s => s.key === school)?.color || C.soft;
+            return (
+              <React.Fragment key={school}>
+                <div className="font-mono" style={{
+                  fontSize: 9, color, fontWeight: 600, letterSpacing: '0.05em', textAlign: 'right',
+                }}>
+                  {name}
+                </div>
+                {projections.map(p => {
+                  const val = project(school, p.n);
+                  return (
+                    <div key={p.n} className="font-mono" style={{
+                      fontSize: 10, color: C.cream, textAlign: 'right', fontWeight: 500,
+                    }}>
+                      {formatNum(val)}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </div>
+        <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.6)', marginTop: 8, lineHeight: 1.5 }}>
+          {['bubble', 'selection'].includes(currentSchool) && (
+            <>At 1M cards, {SCHOOL_NAMES[currentSchool]} needs <strong style={{ color: C.cream }}>{formatNum(project(currentSchool, 1e6))}</strong> comparisons. Merge Sort? Just <strong style={{ color: C.cream }}>{formatNum(project('merge', 1e6))}</strong>. That's the power of <strong style={{ color: C.gold }}>O(n log n)</strong>.</>
+          )}
+          {currentSchool === 'insertion' && (
+            <>Insertion is fast on nearly-sorted data, but on random data it grows like n². At 1M cards: <strong style={{ color: C.cream }}>{formatNum(project('insertion', 1e6))}</strong> vs Merge's <strong style={{ color: C.cream }}>{formatNum(project('merge', 1e6))}</strong>.</>
+          )}
+          {['merge', 'heap', 'quick'].includes(currentSchool) && (
+            <>You used an <strong style={{ color: C.gold }}>O(n log n)</strong> algorithm — at 1M cards it needs only <strong style={{ color: C.cream }}>{formatNum(project(currentSchool, 1e6))}</strong> steps. Bubble Sort would need <strong style={{ color: C.cream }}>{formatNum(project('bubble', 1e6))}</strong> — that's {Math.round(project('bubble', 1e6) / project(currentSchool, 1e6))}x more!</>
+          )}
+          {currentSchool === 'radix' && (
+            <>Radix doesn't compare cards at all — it uses <strong style={{ color: C.gold }}>O(nk)</strong> digit placements. At 1M cards: just <strong style={{ color: C.cream }}>{formatNum(project('radix', 1e6))}</strong> placements. Bubble Sort would need <strong style={{ color: C.cream }}>{formatNum(project('bubble', 1e6))}</strong> comparisons!</>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DemoPlay = ({ initial, onReset }) => {
   const [state, dispatch] = useReducer(rootReducer, initial, () =>
     initialState(initial.school, initial.mode, initial.deckSize || 8)
@@ -3301,6 +3448,14 @@ const DemoPlay = ({ initial, onReset }) => {
                     marginTop: 4, fontWeight: 600,
                   }}>✨ PERFECT — Matched theoretical minimum!</div>
                 )}
+
+                {/* Complexity Scoreboard */}
+                <ComplexityScoreboard
+                  mins={state.mins}
+                  currentSchool={state.players[0].school}
+                  deckSize={state.deckSize}
+                  playerComps={state.players[0].comparisons}
+                />
               </div>
             );
           })()}
