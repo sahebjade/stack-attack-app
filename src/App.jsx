@@ -173,7 +173,40 @@ const computeMins = (deck) => {
   };
   const quick = computeQuickComps([...deck], 0, n);
 
-  return { bubble, selection, insertion: insertionComps, merge: mergeComps, quick };
+  // Heap: simulate heap sort comparisons
+  const heapArr = [...deck];
+  let heapComps = 0;
+  const siftDown = (arr, pos, sz) => {
+    while (true) {
+      let largest = pos;
+      const left = 2 * pos + 1;
+      const right = 2 * pos + 2;
+      if (left < sz) {
+        heapComps++;
+        if (arr[left] > arr[largest]) largest = left;
+      }
+      if (right < sz) {
+        heapComps++;
+        if (arr[right] > arr[largest]) largest = right;
+      }
+      if (largest !== pos) {
+        [arr[pos], arr[largest]] = [arr[largest], arr[pos]];
+        pos = largest;
+      } else break;
+    }
+  };
+  for (let i = Math.floor(n / 2) - 1; i >= 0; i--) siftDown(heapArr, i, n);
+  let heapSz = n;
+  while (heapSz > 1) {
+    [heapArr[0], heapArr[heapSz - 1]] = [heapArr[heapSz - 1], heapArr[0]];
+    heapSz--;
+    siftDown(heapArr, 0, heapSz);
+  }
+
+  // Radix: no comparisons, count placements (n per pass, 2 passes for 1-99)
+  const radix = n * 2;
+
+  return { bubble, selection, insertion: insertionComps, merge: mergeComps, quick, heap: heapComps, radix };
 };
 
 const SCHOOL_NAMES = {
@@ -182,6 +215,8 @@ const SCHOOL_NAMES = {
   insertion: 'Insertion Lodge',
   selection: 'Selection Circle',
   merge: 'Merge Guild',
+  heap: 'Heap Fortress',
+  radix: 'Radix Alchemists',
 };
 
 const makePlayerState = (deck, school) => {
@@ -236,6 +271,25 @@ const makePlayerState = (deck, school) => {
       currentMergeOpIdx: 0,
       mergeState: null,
       mergePhase: 'start_merge', // 'start_merge' | 'comparing' | 'auto_append'
+    };
+  }
+  if (school === 'heap') {
+    return {
+      ...base,
+      heapPhase: 'building',        // 'building' | 'extract_swap' | 'extract_sift' | 'done'
+      heapBuildIdx: Math.floor(n / 2) - 1, // sift down from here to 0
+      heapSize: n,
+      siftPos: null,                // current position during sift-down
+      siftState: null,              // null | 'ready' | 'comparing'
+    };
+  }
+  if (school === 'radix') {
+    return {
+      ...base,
+      radixPass: 0,                 // 0 = ones digit, 1 = tens digit
+      radixCardIdx: 0,              // which card we're placing
+      radixBuckets: Array.from({ length: 10 }, () => []),
+      radixPhase: 'placing',        // 'placing' | 'collecting' | 'done'
     };
   }
   return base;
@@ -801,6 +855,211 @@ function playerReducer(state, action) {
       };
     }
 
+    // ====== HEAP SORT ======
+    case 'HEAP_SETUP_COMPARE': {
+      if (state.finished || state.school !== 'heap') return state;
+      let pos;
+      if (state.heapPhase === 'building') {
+        pos = state.siftPos !== null ? state.siftPos : state.heapBuildIdx;
+      } else if (state.heapPhase === 'extract_sift') {
+        pos = state.siftPos !== null ? state.siftPos : 0;
+      } else return state;
+
+      const sz = state.heapSize;
+      const left = 2 * pos + 1;
+      const right = 2 * pos + 2;
+      if (left >= sz) {
+        // No children — sift done at this level
+        if (state.heapPhase === 'building') {
+          const nextBuild = state.heapBuildIdx - 1;
+          if (nextBuild < 0) {
+            return { ...state, heapPhase: 'extract_swap', siftPos: null, siftState: null, highlights: {} };
+          }
+          return { ...state, heapBuildIdx: nextBuild, siftPos: null, siftState: null, highlights: {} };
+        }
+        return { ...state, heapPhase: 'extract_swap', siftPos: null, siftState: null, highlights: {} };
+      }
+      // Find largest child
+      let maxChild = left;
+      let compsNeeded = 1;
+      if (right < sz) {
+        compsNeeded = 2;
+        if (state.lane[right].value > state.lane[left].value) maxChild = right;
+      }
+      const parentVal = state.lane[pos].value;
+      const childVal = state.lane[maxChild].value;
+      const shouldSwap = childVal > parentVal;
+      const highlights = { [pos]: 'pivot' };
+      if (left < sz) highlights[left] = 'compare_left';
+      if (right < sz) highlights[right] = 'compare_right';
+      return {
+        ...state,
+        siftPos: pos,
+        siftState: 'comparing',
+        highlights,
+        pendingAction: { type: 'heap_compare', parentIdx: pos, parentVal, childIdx: maxChild, childVal, shouldSwap, compsNeeded },
+      };
+    }
+
+    case 'HEAP_EXECUTE': {
+      if (!state.pendingAction || state.pendingAction.type !== 'heap_compare') return state;
+      const { parentIdx, parentVal, childIdx, childVal, shouldSwap, compsNeeded } = state.pendingAction;
+      const correct = action.swap === shouldSwap;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          highlights: {},
+          pendingAction: null,
+          siftState: null,
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong call on ${parentVal} vs ${childVal}.` },
+        };
+      }
+      const newComparisons = state.comparisons + compsNeeded;
+      let newSwaps = state.swaps;
+      let newLane = [...state.lane];
+      const logEntries = [];
+
+      if (shouldSwap) {
+        [newLane[parentIdx], newLane[childIdx]] = [newLane[childIdx], newLane[parentIdx]];
+        newSwaps += 1;
+        logEntries.push({ type: 'action', text: `P${action.playerNum}: ${childVal} > ${parentVal} → swap.` });
+        // Continue sifting at childIdx
+        return {
+          ...state,
+          lane: newLane,
+          comparisons: newComparisons,
+          swaps: newSwaps,
+          siftPos: childIdx,
+          siftState: null,
+          highlights: {},
+          pendingAction: null,
+          _logEntries: logEntries,
+        };
+      } else {
+        logEntries.push({ type: 'action', text: `P${action.playerNum}: ${parentVal} ≥ ${childVal} → stays.` });
+        // Sift done
+        if (state.heapPhase === 'building') {
+          const nextBuild = state.heapBuildIdx - 1;
+          if (nextBuild < 0) {
+            logEntries.push({ type: 'lock', text: `P${action.playerNum}: Max-heap built!` });
+            return {
+              ...state, lane: newLane, comparisons: newComparisons, swaps: newSwaps,
+              heapPhase: 'extract_swap', heapBuildIdx: -1, siftPos: null, siftState: null,
+              highlights: {}, pendingAction: null, _logEntries: logEntries,
+            };
+          }
+          return {
+            ...state, lane: newLane, comparisons: newComparisons, swaps: newSwaps,
+            heapBuildIdx: nextBuild, siftPos: null, siftState: null,
+            highlights: {}, pendingAction: null, _logEntries: logEntries,
+          };
+        }
+        // extract_sift done
+        return {
+          ...state, lane: newLane, comparisons: newComparisons, swaps: newSwaps,
+          heapPhase: 'extract_swap', siftPos: null, siftState: null,
+          highlights: {}, pendingAction: null, _logEntries: logEntries,
+        };
+      }
+    }
+
+    case 'HEAP_EXTRACT': {
+      if (state.heapPhase !== 'extract_swap') return state;
+      const sz = state.heapSize;
+      if (sz <= 1) {
+        const finalLane = state.lane.map(c => ({ ...c, locked: true }));
+        return {
+          ...state, lane: finalLane, heapPhase: 'done', heapSize: 0,
+          highlights: {}, finished: true,
+          _logEntries: [{ type: 'done', text: `P${action.playerNum} finished: ${state.comparisons} comp, ${state.swaps} swap.` }],
+        };
+      }
+      let newLane = [...state.lane];
+      const lastIdx = sz - 1;
+      [newLane[0], newLane[lastIdx]] = [newLane[lastIdx], newLane[0]];
+      newLane[lastIdx] = { ...newLane[lastIdx], locked: true };
+      const newSize = sz - 1;
+      const logEntries = [
+        { type: 'action', text: `P${action.playerNum}: Extract max ${newLane[lastIdx].value} → position ${sz}.` },
+        { type: 'lock', text: `P${action.playerNum}: Locked ${newLane[lastIdx].value}.` },
+      ];
+      if (newSize <= 1) {
+        newLane[0] = { ...newLane[0], locked: true };
+        logEntries.push({ type: 'done', text: `P${action.playerNum} finished: ${state.comparisons} comp, ${state.swaps + 1} swap.` });
+        return {
+          ...state, lane: newLane, swaps: state.swaps + 1,
+          heapPhase: 'done', heapSize: 0, siftPos: null, siftState: null,
+          highlights: {}, pendingAction: null, finished: true, _logEntries: logEntries,
+        };
+      }
+      return {
+        ...state, lane: newLane, swaps: state.swaps + 1,
+        heapPhase: 'extract_sift', heapSize: newSize, siftPos: 0, siftState: null,
+        highlights: {}, pendingAction: null, _logEntries: logEntries,
+      };
+    }
+
+    // ====== RADIX SORT ======
+    case 'RADIX_PLACE': {
+      if (state.finished || state.school !== 'radix' || state.radixPhase !== 'placing') return state;
+      const card = state.lane[state.radixCardIdx];
+      const digitFn = state.radixPass === 0 ? (v) => v % 10 : (v) => Math.floor(v / 10) % 10;
+      const correctBucket = digitFn(card.value);
+      const correct = action.bucket === correctBucket;
+      if (!correct) {
+        return {
+          ...state,
+          penalties: state.penalties + 1,
+          _logEntry: { type: 'penalty', text: `P${action.playerNum}: Wrong bucket for ${card.value} (chose ${action.bucket}, correct: ${correctBucket}).` },
+        };
+      }
+      const newBuckets = state.radixBuckets.map((b, i) => i === correctBucket ? [...b, card] : [...b]);
+      const newComps = state.comparisons + 1; // count placements
+      const nextIdx = state.radixCardIdx + 1;
+      const logEntry = { type: 'action', text: `P${action.playerNum}: ${card.value} → bucket ${correctBucket}.` };
+      if (nextIdx >= state.lane.length) {
+        // All placed, collect
+        return {
+          ...state, comparisons: newComps, radixBuckets: newBuckets,
+          radixCardIdx: nextIdx, radixPhase: 'collecting',
+          highlights: {}, pendingAction: null, _logEntry: logEntry,
+        };
+      }
+      return {
+        ...state, comparisons: newComps, radixBuckets: newBuckets,
+        radixCardIdx: nextIdx, highlights: { [nextIdx]: 'compare' },
+        pendingAction: null, _logEntry: logEntry,
+      };
+    }
+
+    case 'RADIX_COLLECT': {
+      if (state.radixPhase !== 'collecting') return state;
+      const collected = state.radixBuckets.flat();
+      const newLane = collected.map((c, i) => ({ ...c, id: i }));
+      const nextPass = state.radixPass + 1;
+      if (nextPass >= 2) {
+        const finalLane = newLane.map(c => ({ ...c, locked: true }));
+        return {
+          ...state, lane: finalLane, radixPass: nextPass,
+          radixPhase: 'done', radixBuckets: Array.from({ length: 10 }, () => []),
+          radixCardIdx: 0, highlights: {}, finished: true,
+          _logEntries: [
+            { type: 'lock', text: `P${action.playerNum}: Collected from buckets — sorted!` },
+            { type: 'done', text: `P${action.playerNum} finished: ${state.comparisons} placements, ${state.penalties} penalties.` },
+          ],
+        };
+      }
+      return {
+        ...state, lane: newLane, radixPass: nextPass,
+        radixPhase: 'placing', radixBuckets: Array.from({ length: 10 }, () => []),
+        radixCardIdx: 0, highlights: { [0]: 'compare' },
+        _logEntries: [
+          { type: 'lock', text: `P${action.playerNum}: Collected from buckets. Starting tens digit pass.` },
+        ],
+      };
+    }
+
     case 'CANCEL_PENDING':
       return {
         ...state,
@@ -854,6 +1113,7 @@ const C = {
   cobalt: '#2C4A7F',
   violet: '#5E3B7A',
   slate: '#4A4A4A',
+  teal: '#1A7A6D',
   soft: '#6B6B6B',
   rule: '#D4C9AC',
   dark: '#0E0E0E',
@@ -1449,7 +1709,7 @@ const HowItWorks = () => (
             { name: 'Insertion', symbol: '◨', complexity: 'O(n²)', color: C.emerald },
             { name: 'Selection', symbol: '◐', complexity: 'O(n²)', color: C.violet },
             { name: 'Heap', symbol: '△', complexity: 'O(n log n)', color: C.slate },
-            { name: 'Radix', symbol: '◙', complexity: 'O(nk)', color: C.ink },
+            { name: 'Radix', symbol: '◙', complexity: 'O(nk)', color: C.teal },
           ].map((school, i) => (
             <div key={i} className="school-cell" style={{
               background: C.paper, padding: '28px 16px', textAlign: 'center',
@@ -1556,6 +1816,31 @@ function getTutorialHint(state, activePlayerIdx) {
     }
     if (p.mergePhase === 'comparing') return `Click "Which is smaller?" to compare the front card of each group.`;
   }
+
+  // Heap
+  if (p.school === 'heap') {
+    if (p.pendingAction && p.pendingAction.type === 'heap_compare') {
+      const { parentVal, childVal, shouldSwap } = p.pendingAction;
+      return shouldSwap
+        ? `${childVal} > ${parentVal} — child is larger! Click "Swap down".`
+        : `${parentVal} ≥ ${childVal} — parent stays. Click "Stays".`;
+    }
+    if (p.heapPhase === 'building') return `Click "Check Node" to compare parent with its children.`;
+    if (p.heapPhase === 'extract_swap') return `Click "Extract Max" to move the root to its final position.`;
+    if (p.heapPhase === 'extract_sift') return `Click "Check Node" to sift the new root down.`;
+  }
+
+  // Radix
+  if (p.school === 'radix') {
+    if (p.radixPhase === 'placing') {
+      const card = p.lane[p.radixCardIdx];
+      const digit = p.radixPass === 0 ? card.value % 10 : Math.floor(card.value / 10) % 10;
+      const digitName = p.radixPass === 0 ? 'ones' : 'tens';
+      return `The ${digitName} digit of ${card.value} is ${digit}. Click bucket ${digit}.`;
+    }
+    if (p.radixPhase === 'collecting') return `Click "Collect from Buckets" to gather cards in order.`;
+  }
+
   return null;
 }
 
@@ -1615,6 +1900,26 @@ const DemoSetup = ({ onStart }) => {
         'Keep merging bigger groups until the whole row is one sorted group.',
       ],
     },
+    heap: {
+      color: C.slate,
+      steps: [
+        'Phase 1: Build a max-heap by sifting nodes down.',
+        'At each node, compare parent with its children.',
+        'If a child is larger, swap parent down. Repeat until heap is valid.',
+        'Phase 2: Extract the max (root) and place it at the end.',
+        'Sift the new root down to restore the heap. Repeat until sorted!',
+      ],
+    },
+    radix: {
+      color: C.teal,
+      steps: [
+        'No comparisons! Sort by digits instead.',
+        'Pass 1: Place each card into a bucket (0–9) based on its ones digit.',
+        'Collect all cards from buckets 0 through 9, left to right.',
+        'Pass 2: Repeat using the tens digit.',
+        'After both passes, the cards are fully sorted!',
+      ],
+    },
   };
 
   const info = howToPlay[school];
@@ -1668,6 +1973,8 @@ const DemoSetup = ({ onStart }) => {
               { key: 'insertion', name: 'Insertion Lodge', tagline: 'Methodical. Shifting.', bigO: 'O(n²)', color: C.emerald },
               { key: 'selection', name: 'Selection Circle', tagline: 'Scanning. Minimal swaps.', bigO: 'O(n²)', color: C.violet },
               { key: 'merge', name: 'Merge Guild', tagline: 'Divide & conquer.', bigO: 'O(n log n)', color: C.cobalt },
+              { key: 'heap', name: 'Heap Fortress', tagline: 'Towering. Extracting.', bigO: 'O(n log n)', color: C.slate },
+              { key: 'radix', name: 'Radix Alchemists', tagline: 'Digit magic. No comparisons.', bigO: 'O(nk)', color: C.teal },
             ].map(s => (
                 <button key={s.key} onClick={() => setSchool(s.key)} style={{
                   background: school === s.key ? C.ink : 'transparent',
@@ -1815,7 +2122,7 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
     ? Math.max(0, Math.round(100 - (100 * excess / theoreticalMin) - p.penalties * 5))
     : null;
 
-  const playerColor = p.school === 'bubble' ? C.gold : p.school === 'quick' ? C.crimson : p.school === 'insertion' ? C.emerald : p.school === 'selection' ? C.violet : C.cobalt;
+  const playerColor = p.school === 'bubble' ? C.gold : p.school === 'quick' ? C.crimson : p.school === 'insertion' ? C.emerald : p.school === 'selection' ? C.violet : p.school === 'heap' ? C.slate : p.school === 'radix' ? C.teal : C.cobalt;
   const playerName = SCHOOL_NAMES[p.school] || p.school;
 
   // Partition tray data for Quick
@@ -1935,6 +2242,24 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
             iterDetail = `Merge ${levelInfo.opInLevel} of ${levelInfo.opsThisLevel} this pass`;
           }
           iterColor = C.cobalt;
+        } else if (p.school === 'heap') {
+          if (p.heapPhase === 'building') {
+            const total = Math.floor(n / 2);
+            const done = total - p.heapBuildIdx;
+            iterLabel = `Building heap`;
+            iterDetail = `Sifting node ${done} of ${total}`;
+          } else {
+            iterLabel = `Extracting`;
+            iterDetail = `${n - p.heapSize} of ${n - 1} extracted · ${p.heapSize} remaining`;
+          }
+          iterColor = C.slate;
+        } else if (p.school === 'radix') {
+          const passName = p.radixPass === 0 ? 'Ones digit' : 'Tens digit';
+          iterLabel = `Pass ${p.radixPass + 1} of 2 — ${passName}`;
+          iterDetail = p.radixPhase === 'placing'
+            ? `Placing card ${p.radixCardIdx + 1} of ${n}`
+            : 'Ready to collect';
+          iterColor = C.teal;
         }
 
         return iterLabel ? (
@@ -2010,6 +2335,38 @@ const PlayerPanel = ({ state, dispatch, playerIdx, activePlayerIdx, mode, scenar
               }}>{isMin ? '★ MIN' : isScan ? '▼ SCAN' : ''}</div>
             );
           })}
+        </div>
+      )}
+      {!p.finished && p.school === 'heap' && (() => {
+        const pos = p.siftPos !== null ? p.siftPos : (p.heapPhase === 'building' ? p.heapBuildIdx : 0);
+        const left = 2 * pos + 1;
+        const right = 2 * pos + 2;
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(2px, 0.5vw, 6px)', marginBottom: 4, maxWidth: 900, margin: '0 auto 4px' }}>
+            {p.lane.map((_, idx) => {
+              const isParent = idx === pos;
+              const isLeftChild = idx === left && left < p.heapSize;
+              const isRightChild = idx === right && right < p.heapSize;
+              return (
+                <div key={idx} className="font-mono" style={{
+                  flex: '1 1 0', minWidth: 0, textAlign: 'center', fontSize: 'clamp(6px, 1vw, 8px)',
+                  color: isParent ? C.slate : isLeftChild ? C.cobalt : isRightChild ? C.crimson : 'transparent',
+                  letterSpacing: '0.08em', fontWeight: 600,
+                }}>{isParent ? '▼ NODE' : isLeftChild ? 'L' : isRightChild ? 'R' : ''}</div>
+              );
+            })}
+          </div>
+        );
+      })()}
+      {!p.finished && p.school === 'radix' && p.radixPhase === 'placing' && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(2px, 0.5vw, 6px)', marginBottom: 4, maxWidth: 900, margin: '0 auto 4px' }}>
+          {p.lane.map((_, idx) => (
+            <div key={idx} className="font-mono" style={{
+              flex: '1 1 0', minWidth: 0, textAlign: 'center', fontSize: 'clamp(7px, 1.2vw, 9px)',
+              color: idx === p.radixCardIdx ? C.teal : 'transparent',
+              letterSpacing: '0.1em', fontWeight: 600,
+            }}>▼</div>
+          ))}
         </div>
       )}
       {!p.finished && p.school === 'merge' && (
@@ -2193,6 +2550,8 @@ const AlgoRule = ({ school }) => {
     insertion: { rule: 'Pick up the next card. Slide it left until it fits.', color: C.emerald },
     selection: { rule: 'Find the smallest card. Put it in the next open spot.', color: C.violet },
     merge: { rule: 'Combine two sorted groups into one by always picking the smaller front card.', color: C.cobalt },
+    heap: { rule: 'Build a max-heap, then extract the largest card repeatedly.', color: C.slate },
+    radix: { rule: 'Sort cards by digit — ones first, then tens. No comparisons needed!', color: C.teal },
   };
   const r = rules[school];
   if (!r) return null;
@@ -2677,6 +3036,166 @@ const ActionArea = ({ state: p, dispatch, playerIdx }) => {
               Which is smaller? →
             </Button>
           </div>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  // ── HEAP SORT ──────────────────────────────
+  if (p.school === 'heap') {
+    if (p.pendingAction && p.pendingAction.type === 'heap_compare') {
+      const { parentVal, childVal, parentIdx, childIdx } = p.pendingAction;
+      const childSide = childIdx === 2 * parentIdx + 1 ? 'left' : 'right';
+      return (
+        <div>
+          <AlgoRule school="heap" />
+          <div className="font-sans" style={{ fontSize: 12, color: C.soft, marginBottom: 4 }}>
+            Is the <strong style={{ color: C.ink }}>{childSide} child ({childVal})</strong> larger than the parent <strong style={{ color: C.ink }}>({parentVal})</strong>?
+          </div>
+          <ComparePrompt leftLabel="PARENT" leftVal={parentVal} rightLabel="LARGEST CHILD" rightVal={childVal}>
+            <Button variant="swap" small onClick={() => dispatch({ type: 'HEAP_EXECUTE', swap: true, playerIdx })}>
+              {childVal} &gt; {parentVal} → Swap down
+            </Button>
+            <Button variant="keep" small onClick={() => dispatch({ type: 'HEAP_EXECUTE', swap: false, playerIdx })}>
+              {parentVal} ≥ {childVal} → Stays
+            </Button>
+          </ComparePrompt>
+        </div>
+      );
+    }
+    if (p.heapPhase === 'building') {
+      const pos = p.siftPos !== null ? p.siftPos : p.heapBuildIdx;
+      const left = 2 * pos + 1;
+      const right = 2 * pos + 2;
+      const hasChildren = left < p.heapSize;
+      if (!hasChildren) {
+        // Auto-advance: no children to compare
+        return (
+          <div>
+            <AlgoRule school="heap" />
+            <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+              👉 Node at position {pos + 1} has no children. Move to next node.
+            </div>
+            <Button small onClick={() => dispatch({ type: 'HEAP_SETUP_COMPARE', playerIdx })}>
+              Next Node
+            </Button>
+          </div>
+        );
+      }
+      return (
+        <div>
+          <AlgoRule school="heap" />
+          <StepDots current={Math.floor(p.lane.length / 2) - p.heapBuildIdx} total={Math.floor(p.lane.length / 2)} color={C.slate} />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            👉 <strong>Building heap:</strong> Check node at position {pos + 1} against its children.
+          </div>
+          <Button small onClick={() => dispatch({ type: 'HEAP_SETUP_COMPARE', playerIdx })}>
+            Check Node
+          </Button>
+        </div>
+      );
+    }
+    if (p.heapPhase === 'extract_swap') {
+      return (
+        <div>
+          <AlgoRule school="heap" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            ✅ Heap is valid! The root (<strong>{p.lane[0].value}</strong>) is the max. Extract it to position {p.heapSize}.
+          </div>
+          <Button variant="gold" small onClick={() => dispatch({ type: 'HEAP_EXTRACT', playerIdx })}>
+            Extract Max ({p.lane[0].value})
+          </Button>
+        </div>
+      );
+    }
+    if (p.heapPhase === 'extract_sift') {
+      return (
+        <div>
+          <AlgoRule school="heap" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+            👉 New root is <strong>{p.lane[p.siftPos !== null ? p.siftPos : 0].value}</strong>. Sift it down to restore the heap.
+          </div>
+          <Button small onClick={() => dispatch({ type: 'HEAP_SETUP_COMPARE', playerIdx })}>
+            Check Node
+          </Button>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  // ── RADIX SORT ──────────────────────────────
+  if (p.school === 'radix') {
+    if (p.radixPhase === 'placing') {
+      const card = p.lane[p.radixCardIdx];
+      const digitName = p.radixPass === 0 ? 'ones' : 'tens';
+      return (
+        <div>
+          <AlgoRule school="radix" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.ink, marginBottom: 8 }}>
+            👉 Card <strong>{card.value}</strong> — what is its <strong>{digitName} digit</strong>? Place it in the correct bucket.
+          </div>
+
+          {/* Bucket buttons */}
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            {Array.from({ length: 10 }, (_, i) => (
+              <button key={i} onClick={() => dispatch({ type: 'RADIX_PLACE', bucket: i, playerIdx })} style={{
+                width: 40, height: 40, border: `1px solid ${C.rule}`, borderRadius: 4,
+                background: C.cream, cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
+                fontSize: 16, fontWeight: 600, color: C.ink, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.target.style.background = C.teal; e.target.style.color = C.cream; }}
+              onMouseLeave={e => { e.target.style.background = C.cream; e.target.style.color = C.ink; }}
+              >
+                {i}
+              </button>
+            ))}
+          </div>
+
+          {/* Show current buckets */}
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {p.radixBuckets.map((bucket, i) => (
+              <div key={i} style={{
+                minWidth: 30, padding: '3px 4px', border: `1px solid ${C.rule}`, borderRadius: 3,
+                textAlign: 'center', background: bucket.length > 0 ? `${C.teal}10` : 'transparent',
+              }}>
+                <div className="font-mono" style={{ fontSize: 7, color: C.soft, letterSpacing: '0.1em' }}>{i}</div>
+                {bucket.map((c, j) => (
+                  <div key={j} className="font-mono" style={{ fontSize: 10, color: C.ink }}>{c.value}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    if (p.radixPhase === 'collecting') {
+      return (
+        <div>
+          <AlgoRule school="radix" />
+          <div className="font-sans" style={{ fontSize: 13, color: C.emerald, marginBottom: 8, fontWeight: 500 }}>
+            ✅ All cards placed! Collect from buckets 0→9 to form the new order.
+          </div>
+
+          {/* Show filled buckets */}
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            {p.radixBuckets.map((bucket, i) => (
+              <div key={i} style={{
+                minWidth: 30, padding: '3px 4px', border: `1px solid ${bucket.length > 0 ? C.teal : C.rule}`, borderRadius: 3,
+                textAlign: 'center', background: bucket.length > 0 ? `${C.teal}15` : 'transparent',
+              }}>
+                <div className="font-mono" style={{ fontSize: 7, color: C.soft, letterSpacing: '0.1em' }}>{i}</div>
+                {bucket.map((c, j) => (
+                  <div key={j} className="font-mono" style={{ fontSize: 10, color: C.ink, fontWeight: 600 }}>{c.value}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <Button small onClick={() => dispatch({ type: 'RADIX_COLLECT', playerIdx })}>
+            Collect from Buckets →
+          </Button>
         </div>
       );
     }
