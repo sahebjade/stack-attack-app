@@ -3356,6 +3356,183 @@ const ComplexityScoreboard = ({ mins, currentSchool, deckSize, playerComps }) =>
 };
 
 // Growth Challenge Results — shown after completing all 3 rounds
+
+// Phase 4: Complexity Curve Visualizer — SVG chart showing how algorithms scale
+const ComplexityCurves = ({ currentSchool, deckSize, playerComps }) => {
+  const W = 280, H = 160, PAD = { top: 12, right: 12, bottom: 28, left: 36 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+
+  const maxN = Math.max(32, deckSize * 4);
+  const maxY = maxN * maxN; // scale to n² at maxN
+
+  const toX = n => PAD.left + (n / maxN) * plotW;
+  const toY = val => PAD.top + plotH - Math.min(val / maxY, 1) * plotH;
+
+  const curves = [
+    { label: 'n²', fn: n => n * n, color: C.gold, dash: '' },
+    { label: 'n log n', fn: n => n * Math.log2(Math.max(n, 1)), color: C.emerald, dash: '' },
+    { label: 'n', fn: n => n * 2, color: C.teal, dash: '4,3' },
+  ];
+
+  const makePath = (fn) => {
+    const pts = [];
+    for (let n = 1; n <= maxN; n += 0.5) {
+      pts.push(`${toX(n).toFixed(1)},${toY(fn(n)).toFixed(1)}`);
+    }
+    return `M${pts.join('L')}`;
+  };
+
+  // Grid lines
+  const gridNs = [4, 8, 16, 32].filter(n => n <= maxN);
+  const schoolColor = currentSchool === 'bubble' ? C.gold : currentSchool === 'quick' ? C.crimson
+    : currentSchool === 'insertion' ? C.emerald : currentSchool === 'selection' ? C.violet
+    : currentSchool === 'heap' ? C.slate : currentSchool === 'radix' ? C.teal : C.cobalt;
+  const isQuadratic = ['bubble', 'selection', 'insertion'].includes(currentSchool);
+  const curveIdx = currentSchool === 'radix' ? 2 : isQuadratic ? 0 : 1;
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
+        GROWTH CURVES — HOW ALGORITHMS SCALE
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 300, display: 'block', margin: '0 auto' }}>
+        {/* Grid */}
+        {gridNs.map(n => (
+          <g key={n}>
+            <line x1={toX(n)} y1={PAD.top} x2={toX(n)} y2={H - PAD.bottom}
+              stroke="rgba(244,235,214,0.08)" strokeWidth={0.5} />
+            <text x={toX(n)} y={H - PAD.bottom + 12} textAnchor="middle"
+              fill="rgba(244,235,214,0.3)" fontSize={7} fontFamily="'JetBrains Mono', monospace">
+              {n}
+            </text>
+          </g>
+        ))}
+        {/* Axis labels */}
+        <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end"
+          fill="rgba(244,235,214,0.3)" fontSize={6} fontFamily="'JetBrains Mono', monospace">ops</text>
+        <text x={W - PAD.right} y={H - PAD.bottom + 12} textAnchor="end"
+          fill="rgba(244,235,214,0.3)" fontSize={6} fontFamily="'JetBrains Mono', monospace">cards</text>
+
+        {/* Curves */}
+        {curves.map((c, i) => (
+          <g key={c.label}>
+            <path d={makePath(c.fn)} fill="none" stroke={c.color}
+              strokeWidth={i === curveIdx ? 2 : 1}
+              strokeDasharray={c.dash}
+              opacity={i === curveIdx ? 1 : 0.35} />
+            {/* Label at end */}
+            <text x={toX(maxN) + 2} y={toY(c.fn(maxN))}
+              fill={c.color} fontSize={7} fontFamily="'JetBrains Mono', monospace"
+              dominantBaseline="middle" opacity={i === curveIdx ? 1 : 0.5}>
+              {c.label}
+            </text>
+          </g>
+        ))}
+
+        {/* Player data point */}
+        <circle cx={toX(deckSize)} cy={toY(playerComps)}
+          r={4} fill={schoolColor} stroke={C.cream} strokeWidth={1.5} />
+        <text x={toX(deckSize) + 6} y={toY(playerComps) - 2}
+          fill={C.cream} fontSize={8} fontFamily="'JetBrains Mono', monospace"
+          fontWeight={600}>
+          You: {playerComps}
+        </text>
+
+        {/* Theoretical minimum point */}
+        <circle cx={toX(deckSize)} cy={toY(curves[curveIdx].fn(deckSize))}
+          r={2.5} fill="none" stroke={C.gold} strokeWidth={1} strokeDasharray="2,2" />
+      </svg>
+      <div className="font-sans" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)', textAlign: 'center', marginTop: 4 }}>
+        Your dot on the <span style={{ color: curves[curveIdx].color, fontWeight: 600 }}>{curves[curveIdx].label}</span> curve
+        {' · '}Highlighted = your algorithm's growth class
+      </div>
+    </div>
+  );
+};
+
+// Phase 5: Badge System — achievements earned during play
+const BADGES = [
+  { id: 'perfect', icon: '💎', name: 'Flawless', desc: 'Score 100 (match theoretical minimum)' },
+  { id: 'speedster', icon: '⚡', name: 'Speedster', desc: 'Score 90+ on any algorithm' },
+  { id: 'growth', icon: '📈', name: 'Growth Explorer', desc: 'Complete a Growth Challenge' },
+  { id: 'allSchools', icon: '🎓', name: 'Scholar', desc: 'Try all 7 algorithms' },
+  { id: 'quadratic', icon: '🐢', name: 'Patience Master', desc: 'Complete all 3 O(n²) algorithms' },
+  { id: 'nlogn', icon: '🚀', name: 'Speed Demon', desc: 'Complete all 3 O(n log n) algorithms' },
+  { id: 'radixWin', icon: '🔮', name: 'Digit Wizard', desc: 'Complete Radix Sort' },
+  { id: 'hardMode', icon: '🏔️', name: 'Mountaineer', desc: 'Complete a round with 10+ cards' },
+];
+
+const loadBadges = () => {
+  try {
+    return JSON.parse(localStorage.getItem('stackAttackBadges') || '{}');
+  } catch { return {}; }
+};
+const saveBadges = (b) => { try { localStorage.setItem('stackAttackBadges', JSON.stringify(b)); } catch {} };
+const loadHistory = () => {
+  try {
+    return JSON.parse(localStorage.getItem('stackAttackHistory') || '[]');
+  } catch { return []; }
+};
+const saveHistory = (h) => { try { localStorage.setItem('stackAttackHistory', JSON.stringify(h)); } catch {} };
+
+const checkBadges = (score, school, deckSize, growthDone, history) => {
+  const earned = {};
+  if (score >= 100) earned.perfect = true;
+  if (score >= 90) earned.speedster = true;
+  if (growthDone) earned.growth = true;
+  const allSchools = new Set(history.map(h => h.school));
+  allSchools.add(school);
+  if (allSchools.size >= 7) earned.allSchools = true;
+  const quadratics = ['bubble', 'selection', 'insertion'];
+  if (quadratics.every(s => allSchools.has(s))) earned.quadratic = true;
+  const nlognAlgos = ['merge', 'heap', 'quick'];
+  if (nlognAlgos.every(s => allSchools.has(s))) earned.nlogn = true;
+  if (school === 'radix') earned.radixWin = true;
+  if (deckSize >= 10) earned.hardMode = true;
+  return earned;
+};
+
+const BadgeShelf = ({ badges, newBadges }) => {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
+        ACHIEVEMENTS
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {BADGES.map(b => {
+          const owned = badges[b.id];
+          const isNew = newBadges[b.id];
+          return (
+            <div key={b.id} title={`${b.name}: ${b.desc}`} style={{
+              width: 44, height: 52, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 2,
+              background: owned ? 'rgba(244,235,214,0.08)' : 'rgba(244,235,214,0.02)',
+              borderRadius: 4,
+              border: isNew ? `1.5px solid ${C.gold}` : '1px solid rgba(244,235,214,0.06)',
+              opacity: owned ? 1 : 0.3,
+              animation: isNew ? 'pulseGold 1.5s ease-in-out 3' : 'none',
+              position: 'relative',
+            }}>
+              <div style={{ fontSize: 18, filter: owned ? 'none' : 'grayscale(1)' }}>{b.icon}</div>
+              <div className="font-mono" style={{ fontSize: 6, color: C.cream, letterSpacing: '0.05em', textAlign: 'center', lineHeight: 1.2 }}>
+                {b.name}
+              </div>
+              {isNew && (
+                <div style={{
+                  position: 'absolute', top: -4, right: -4,
+                  background: C.gold, color: C.ink, fontSize: 6, fontWeight: 700,
+                  padding: '1px 3px', borderRadius: 2, fontFamily: 'Inter, sans-serif',
+                }}>NEW</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const GrowthResults = ({ results, school, onDone }) => {
   const schoolColor = school === 'bubble' ? C.gold : school === 'quick' ? C.crimson : school === 'insertion' ? C.emerald : school === 'selection' ? C.violet : school === 'heap' ? C.slate : school === 'radix' ? C.teal : C.cobalt;
   const maxComps = Math.max(...results.map(r => r.comps));
@@ -3527,6 +3704,39 @@ const DemoPlay = ({ initial, onReset }) => {
     dispatch({ type: 'RESET', school, mode: 'solo', deckSize: GROWTH_SIZES[0] });
   };
 
+  // Badge system state
+  const [badges, setBadges] = useState(() => loadBadges());
+  const [newBadges, setNewBadges] = useState({});
+  const [growthDone, setGrowthDone] = useState(false);
+
+  // Track history + badges when round finishes (not during growth challenge intermediate rounds)
+  useEffect(() => {
+    if (!allFinished || growthRef.current) return;
+    const p = state.players[0];
+    const mins = state.mins[p.school] || 1;
+    const excess = Math.max(0, p.comparisons - mins);
+    const score = Math.max(0, Math.round(100 - (100 * excess / mins) - p.penalties * 5));
+    const history = loadHistory();
+    const entry = { school: p.school, score, deckSize: state.deckSize, ts: Date.now() };
+    const updatedHistory = [...history, entry];
+    saveHistory(updatedHistory);
+
+    const wasGrowthDone = growthDone || !!growthResults;
+    const earned = checkBadges(score, p.school, state.deckSize, wasGrowthDone, updatedHistory);
+    const prev = loadBadges();
+    const freshNew = {};
+    Object.keys(earned).forEach(k => { if (!prev[k]) freshNew[k] = true; });
+    const merged = { ...prev, ...earned };
+    setBadges(merged);
+    saveBadges(merged);
+    setNewBadges(freshNew);
+  }, [allFinished]);
+
+  // Mark growth done when results appear
+  useEffect(() => {
+    if (growthResults) setGrowthDone(true);
+  }, [growthResults]);
+
   // Calculate scores once when finished
   const scores = allFinished ? state.players.map(p => {
     const mins = state.mins[p.school];
@@ -3668,6 +3878,31 @@ const DemoPlay = ({ initial, onReset }) => {
             </button>
           </div>
 
+          {/* New badge announcements */}
+          {Object.keys(newBadges).length > 0 && (
+            <div style={{
+              marginTop: 16, padding: '10px 14px',
+              background: 'rgba(201,162,39,0.1)', borderRadius: 4,
+              border: `1px solid ${C.gold}`,
+              animation: 'fadeUp 0.5s ease-out',
+            }}>
+              <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, fontWeight: 600, marginBottom: 6 }}>
+                🏆 NEW BADGE{Object.keys(newBadges).length > 1 ? 'S' : ''} EARNED!
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {BADGES.filter(b => newBadges[b.id]).map(b => (
+                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 20 }}>{b.icon}</span>
+                    <div>
+                      <div className="font-mono" style={{ fontSize: 10, color: C.cream, fontWeight: 600 }}>{b.name}</div>
+                      <div className="font-sans" style={{ fontSize: 9, color: 'rgba(244,235,214,0.5)' }}>{b.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Collapsible Advanced Section */}
           <details style={{ marginTop: 20 }}>
             <summary className="font-mono" style={{
@@ -3686,6 +3921,16 @@ const DemoPlay = ({ initial, onReset }) => {
                 deckSize={state.deckSize}
                 playerComps={state.players[0].comparisons}
               />
+
+              {/* Phase 4: Complexity Curves */}
+              <ComplexityCurves
+                currentSchool={state.players[0].school}
+                deckSize={state.deckSize}
+                playerComps={state.players[0].comparisons}
+              />
+
+              {/* Phase 5: Badge Shelf */}
+              <BadgeShelf badges={badges} newBadges={newBadges} />
 
               {/* Growth Challenge */}
               {!growthChallenge && (
