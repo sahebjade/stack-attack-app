@@ -4984,20 +4984,6 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
   return (
     <section id="complexity-quest" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
       <div style={{ maxWidth: 700, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <Eyebrow color={C.gold}>Complexity Quest</Eyebrow>
-          <SerifHeading size={48} color={C.cream}>
-            The Sorting <span style={{ fontStyle: 'italic', color: C.gold }}>Showdown</span>
-          </SerifHeading>
-          <p className="font-serif" style={{
-            fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
-            maxWidth: 480, margin: '20px auto 0', lineHeight: 1.5,
-          }}>
-            Same cards. Same job. But which algorithm finishes first?
-            Race them and count every step.
-          </p>
-        </div>
-
         {/* Mode tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center', flexWrap: 'wrap' }}>
           {modes.map(m => (
