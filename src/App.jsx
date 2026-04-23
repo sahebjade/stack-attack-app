@@ -4616,14 +4616,369 @@ const Championship = () => {
   );
 };
 
+
+// ─── Shape Gallery Mode (CRA "Representational" bridge) ───
+const ShapeGallery = () => {
+  const [selected, setSelected] = useState(null);
+
+  const ns = [4, 8, 16, 32, 64, 128];
+  const data = ALGO_DATA.map(a => ({
+    ...a,
+    points: ns.map(n => a.fn(n)),
+  }));
+
+  const W = 580, H = 260;
+  const M = { top: 16, right: 80, bottom: 36, left: 52 };
+  const plotW = W - M.left - M.right;
+  const plotH = H - M.top - M.bottom;
+  const maxY = Math.max(...data.flatMap(d => d.points));
+
+  const xPos = (i) => M.left + (i / (ns.length - 1)) * plotW;
+  const yPos = (v) => M.top + plotH - (v / maxY) * plotH;
+  const linePath = (points) =>
+    points.map((v, i) => `${i === 0 ? 'M' : 'L'}${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`).join(' ');
+
+  // Tier labels for right margin (when nothing selected)
+  const tierLabels = [
+    { y: yPos(data[0].points[5]), label: '🫧👆 Slow · n²', color: C.gold },
+    { y: yPos(data[2].points[5]), label: '🫳  Medium', color: C.gold },
+    { y: yPos(data[3].points[5]), label: '✂️⚡🏔️ Fast · n log n', color: C.emerald },
+    { y: yPos(data[6].points[5]), label: '🔢 Linear · n', color: C.teal },
+  ];
+
+  return (
+    <div>
+      {/* Algorithm selector */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12, justifyContent: 'center' }}>
+        {data.map(a => {
+          const isSel = selected === a.key;
+          return (
+            <button key={a.key}
+              onClick={() => setSelected(selected === a.key ? null : a.key)}
+              style={{
+                background: isSel ? `${a.tierColor}30` : 'rgba(244,235,214,0.05)',
+                color: isSel ? a.tierColor : 'rgba(244,235,214,0.5)',
+                border: isSel ? `1px solid ${a.tierColor}` : '1px solid transparent',
+                padding: '4px 8px', fontSize: 9, borderRadius: 3,
+                cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+                transition: 'all 0.15s',
+              }}>
+              {a.icon} {a.name.split(' ')[0]}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* SVG Chart */}
+      <div style={{ width: '100%', margin: '0 auto' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
+          {/* Horizontal grid */}
+          {[0, 0.25, 0.5, 0.75, 1].map(f => {
+            const y = M.top + plotH * (1 - f);
+            const val = Math.round(maxY * f);
+            return (
+              <g key={f}>
+                <line x1={M.left} y1={y} x2={M.left + plotW} y2={y}
+                  stroke="rgba(244,235,214,0.06)" strokeWidth={1} />
+                <text x={M.left - 6} y={y + 3} fill="rgba(244,235,214,0.3)"
+                  fontSize={7} fontFamily="JetBrains Mono, monospace" textAnchor="end">
+                  {val > 999 ? `${(val / 1000).toFixed(1)}K` : val}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Vertical grid + x labels */}
+          {ns.map((n, i) => (
+            <g key={n}>
+              <line x1={xPos(i)} y1={M.top} x2={xPos(i)} y2={M.top + plotH}
+                stroke="rgba(244,235,214,0.04)" strokeWidth={1} />
+              <text x={xPos(i)} y={H - M.bottom + 14} fill="rgba(244,235,214,0.4)"
+                fontSize={9} fontFamily="JetBrains Mono, monospace" textAnchor="middle" fontWeight={600}>
+                {n}
+              </text>
+            </g>
+          ))}
+
+          <text x={M.left + plotW / 2} y={H - 4} fill="rgba(244,235,214,0.25)"
+            fontSize={7} fontFamily="JetBrains Mono, monospace" textAnchor="middle">
+            number of cards
+          </text>
+          <text x={10} y={M.top + plotH / 2} fill="rgba(244,235,214,0.25)"
+            fontSize={7} fontFamily="JetBrains Mono, monospace" textAnchor="middle"
+            transform={`rotate(-90, 10, ${M.top + plotH / 2})`}>
+            steps to sort
+          </text>
+
+          {/* Algorithm lines */}
+          {data.map(a => {
+            const isSel = selected === a.key;
+            const anySelected = selected !== null;
+            const opacity = anySelected ? (isSel ? 1 : 0.08) : 0.55;
+            const sw = isSel ? 2.5 : 1.5;
+
+            return (
+              <g key={a.key}>
+                <path d={linePath(a.points)} fill="none" stroke={a.tierColor}
+                  strokeWidth={sw} opacity={opacity} strokeLinecap="round" strokeLinejoin="round" />
+                {a.points.map((v, i) => (
+                  <circle key={i} cx={xPos(i)} cy={yPos(v)} r={isSel ? 3.5 : 1.5}
+                    fill={a.tierColor} opacity={opacity} />
+                ))}
+                {/* Individual label when selected */}
+                {isSel && (
+                  <text x={xPos(5) + 6} y={yPos(a.points[5]) + 3}
+                    fill={a.tierColor} fontSize={9}
+                    fontFamily="JetBrains Mono, monospace" fontWeight={700}>
+                    {a.icon} {a.points[5].toLocaleString()}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Tier group labels (when nothing selected) */}
+          {selected === null && tierLabels.map((g, i) => (
+            <text key={i} x={xPos(5) + 6} y={g.y + 3} fill={g.color} fontSize={7}
+              fontFamily="JetBrains Mono, monospace" fontWeight={600} opacity={0.5}>
+              {g.label}
+            </text>
+          ))}
+        </svg>
+      </div>
+
+      {/* Reference shape thumbnails */}
+      <div style={{ marginTop: 16, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {[
+          { name: 'n²', desc: 'Parabola — doubles → 4× work', color: C.gold, fn: n => n * (n - 1) / 2, algos: 'Bubble, Selection' },
+          { name: 'n log n', desc: 'Gentle curve — doubles → ~2× work', color: C.emerald, fn: n => n * Math.log2(n), algos: 'Merge, Quick, Heap' },
+          { name: 'n', desc: 'Straight line — doubles → 2× work', color: C.teal, fn: n => n * 2, algos: 'Radix' },
+        ].map(s => {
+          const refMax = s.fn(128);
+          return (
+            <div key={s.name} style={{ textAlign: 'center', minWidth: 100 }}>
+              <svg viewBox="0 0 80 40" style={{ width: 80, height: 40 }}>
+                <path d={ns.map((n, i) => {
+                  const x = 4 + (i / (ns.length - 1)) * 72;
+                  const y = 36 - (s.fn(n) / refMax) * 32;
+                  return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+                }).join(' ')} fill="none" stroke={s.color} strokeWidth={2} opacity={0.5} strokeLinecap="round" />
+              </svg>
+              <div className="font-mono" style={{ fontSize: 10, fontWeight: 800, color: s.color }}>{s.name}</div>
+              <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.5)', marginTop: 1 }}>{s.desc}</div>
+              <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.3)', marginTop: 1 }}>{s.algos}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Insight */}
+      <div style={{ marginTop: 16, padding: 14, background: 'rgba(244,235,214,0.04)', borderRadius: 6, borderLeft: `3px solid ${C.gold}` }}>
+        <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+          💡 Computer scientists call these shapes <strong style={{ color: C.cream }}>time complexity</strong>.
+          The parabola (n²) means work <em>explodes</em>. The gentle curve (n log n) stays manageable.
+          Click any algorithm above to trace its shape — <em>that shape tells you everything about how it scales</em>.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Doubling Quiz Mode (formative assessment) ───
+const DoublingQuiz = () => {
+  const [qIdx, setQIdx] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [score, setScore] = useState(0);
+  const [done, setDone] = useState(false);
+  const [questions] = useState(() => {
+    const qs = [
+      { algo: 'bubble', n1: 8, n2: 16, answer: 'quadruples' },
+      { algo: 'merge', n1: 8, n2: 16, answer: 'bit-more' },
+      { algo: 'radix', n1: 16, n2: 32, answer: 'doubles' },
+      { algo: 'selection', n1: 16, n2: 32, answer: 'quadruples' },
+      { algo: 'insertion', n1: 8, n2: 16, answer: 'quadruples' },
+      { algo: 'quick', n1: 32, n2: 64, answer: 'bit-more' },
+      { algo: 'bubble', n1: 32, n2: 64, answer: 'quadruples' },
+      { algo: 'radix', n1: 64, n2: 128, answer: 'doubles' },
+    ];
+    return qs.sort(() => Math.random() - 0.5).slice(0, 6);
+  });
+
+  const choices = [
+    { key: 'doubles', label: 'Doubles (~2×)', icon: '📈' },
+    { key: 'bit-more', label: 'A bit more than doubles (~2.5×)', icon: '📊' },
+    { key: 'quadruples', label: 'Quadruples (~4×)', icon: '🚀' },
+  ];
+
+  if (done) {
+    const growth = [
+      { key: 'quadruples', name: 'O(n²)', color: C.gold, desc: 'Double the cards → 4× the work', algos: 'Bubble, Selection, Insertion' },
+      { key: 'bit-more', name: 'O(n log n)', color: C.emerald, desc: 'Double the cards → ~2.5× the work', algos: 'Merge, Quick, Heap' },
+      { key: 'doubles', name: 'O(n)', color: C.teal, desc: 'Double the cards → 2× the work', algos: 'Radix' },
+    ];
+
+    return (
+      <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, color: C.cream }}>
+            {score >= 5 ? '🎯 Amazing!' : score >= 3 ? '👏 Nice work!' : '🧠 Keep practicing!'}
+          </div>
+          <div className="font-mono" style={{ fontSize: 13, color: C.gold, marginTop: 4 }}>{score}/{questions.length} correct</div>
+        </div>
+
+        <div style={{ padding: 16, background: 'rgba(244,235,214,0.04)', borderRadius: 6, borderLeft: `3px solid ${C.gold}`, marginBottom: 16 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 10, fontWeight: 600 }}>
+            THE DOUBLING TEST — HERE'S WHAT YOU LEARNED
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {growth.map(g => (
+              <div key={g.key} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                <div className="font-mono" style={{ fontSize: 12, fontWeight: 800, color: g.color, minWidth: 70 }}>{g.name}</div>
+                <div>
+                  <div className="font-sans" style={{ fontSize: 11, color: C.cream }}>{g.desc}</div>
+                  <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)' }}>{g.algos}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="font-sans" style={{ fontSize: 12, color: 'rgba(244,235,214,0.6)', marginTop: 12, lineHeight: 1.6 }}>
+            That's the whole secret of <strong style={{ color: C.cream }}>time complexity</strong>:
+            {' '}<em>what happens to the work when the input doubles?</em>
+            {' '}Computer scientists gave each pattern a name — but the <em>idea</em> is just this doubling test.
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <button onClick={() => { setQIdx(0); setSelected(null); setRevealed(false); setScore(0); setDone(false); }} style={{
+            background: C.cream, color: C.ink, border: 'none',
+            padding: '8px 24px', fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const q = questions[qIdx];
+  const algo = ALGO_DATA.find(a => a.key === q.algo);
+  const steps1 = algo.fn(q.n1);
+  const steps2 = algo.fn(q.n2);
+  const ratio = steps2 / steps1;
+
+  return (
+    <div>
+      {/* Progress dots */}
+      <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 16 }}>
+        {questions.map((_, i) => (
+          <div key={i} style={{
+            width: 24, height: 4, borderRadius: 2,
+            background: i < qIdx ? C.gold : i === qIdx ? C.cream : 'rgba(244,235,214,0.1)',
+          }} />
+        ))}
+      </div>
+
+      {/* Question */}
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', marginBottom: 8 }}>
+          QUESTION {qIdx + 1} OF {questions.length}
+        </div>
+        <div style={{ fontSize: 40, marginBottom: 4 }}>{algo.icon}</div>
+        <div className="font-serif" style={{ fontSize: 18, color: C.cream, lineHeight: 1.6 }}>
+          <strong style={{ color: algo.tierColor }}>{algo.name}</strong> needed{' '}
+          <strong style={{ color: C.gold }}>{steps1.toLocaleString()}</strong> steps for{' '}
+          <strong>{q.n1} cards</strong>.
+        </div>
+        <div className="font-serif" style={{ fontSize: 16, color: 'rgba(244,235,214,0.6)', marginTop: 8 }}>
+          You doubled to <strong style={{ color: C.cream }}>{q.n2} cards</strong>.
+          <br />What happened to the steps?
+        </div>
+      </div>
+
+      {/* Choices */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 360, margin: '0 auto 16px' }}>
+        {choices.map(c => {
+          const isCorrect = c.key === q.answer;
+          const isSelected = selected === c.key;
+          let bg = 'rgba(244,235,214,0.05)';
+          let border = '1px solid rgba(244,235,214,0.08)';
+          let txtColor = 'rgba(244,235,214,0.7)';
+
+          if (revealed) {
+            if (isCorrect) { bg = `${C.emerald}20`; border = `2px solid ${C.emerald}`; txtColor = C.emerald; }
+            else if (isSelected && !isCorrect) { bg = `${C.crimson}15`; border = `2px solid ${C.crimson}`; txtColor = C.crimson; }
+            else { bg = 'rgba(244,235,214,0.02)'; txtColor = 'rgba(244,235,214,0.3)'; }
+          } else if (isSelected) {
+            bg = 'rgba(244,235,214,0.1)'; border = `2px solid ${C.cream}`;
+          }
+
+          return (
+            <button key={c.key} onClick={() => { if (!revealed) setSelected(c.key); }} style={{
+              background: bg, border, color: txtColor, padding: '10px 14px', fontSize: 12, fontWeight: 600,
+              cursor: revealed ? 'default' : 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+              textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span>{c.icon}</span> {c.label}
+              {revealed && isCorrect && ' ✓'}
+              {revealed && isSelected && !isCorrect && ' ✗'}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Check / Next */}
+      <div style={{ textAlign: 'center' }}>
+        {!revealed && selected && (
+          <button onClick={() => {
+            setRevealed(true);
+            if (selected === q.answer) setScore(s => s + 1);
+          }} style={{
+            background: C.gold, color: C.ink, border: 'none',
+            padding: '10px 28px', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            Check Answer
+          </button>
+        )}
+        {revealed && (
+          <div style={{ animation: 'fadeUp 0.3s ease-out' }}>
+            <div style={{ padding: 12, background: 'rgba(244,235,214,0.04)', borderRadius: 6, maxWidth: 360, margin: '0 auto 12px' }}>
+              <div className="font-sans" style={{ fontSize: 11, color: C.cream, lineHeight: 1.6 }}>
+                Actual: <strong style={{ color: C.gold }}>{steps2.toLocaleString()} steps</strong> ({ratio.toFixed(1)}× more).
+                {' '}{q.answer === 'quadruples' && <>The work roughly quadrupled — that's the <strong style={{ color: C.gold }}>n²</strong> pattern!</>}
+                {q.answer === 'bit-more' && <>A bit more than doubled — that's the <strong style={{ color: C.emerald }}>n log n</strong> pattern. Smart algorithms!</>}
+                {q.answer === 'doubles' && <>Exactly doubled! Work grows linearly — the <strong style={{ color: C.teal }}>n</strong> pattern.</>}
+              </div>
+            </div>
+            <button onClick={() => {
+              if (qIdx + 1 >= questions.length) { setDone(true); }
+              else { setQIdx(i => i + 1); setSelected(null); setRevealed(false); }
+            }} style={{
+              background: C.cream, color: C.ink, border: 'none',
+              padding: '8px 24px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+            }}>
+              {qIdx + 1 >= questions.length ? 'See Results' : 'Next Question →'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── Complexity Quest Wrapper ───
 const ComplexityQuest = React.forwardRef((props, ref) => {
   const [mode, setMode] = useState('duel');
 
   const modes = [
     { key: 'duel', icon: '⚔️', name: 'Duel', desc: 'Pick 2 algorithms and race them' },
-    { key: 'double', icon: '📈', name: 'Double Trouble', desc: 'Watch the gap explode as cards double' },
-    { key: 'champ', icon: '🏆', name: 'Championship', desc: 'All 7 algorithms compete for gold' },
+    { key: 'double', icon: '📈', name: 'Double', desc: 'Watch the gap explode as cards double' },
+    { key: 'champ', icon: '🏆', name: 'Champ', desc: 'All 7 algorithms compete for gold' },
+    { key: 'graph', icon: '📊', name: 'Curves', desc: 'See every algorithm\'s growth curve on one chart' },
+    { key: 'quiz', icon: '🧠', name: 'Quiz', desc: 'Can you predict what happens when cards double?' },
   ];
 
   return (
@@ -4644,14 +4999,14 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
         </div>
 
         {/* Mode tabs */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center' }}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center', flexWrap: 'wrap' }}>
           {modes.map(m => (
             <button key={m.key} onClick={() => setMode(m.key)} style={{
               background: mode === m.key ? C.cream : 'rgba(244,235,214,0.06)',
               color: mode === m.key ? C.ink : 'rgba(244,235,214,0.6)',
-              border: 'none', padding: '8px 16px', fontSize: 12, fontWeight: 600,
+              border: 'none', padding: '6px 10px', fontSize: 11, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: '4px 4px 0 0',
-              display: 'flex', alignItems: 'center', gap: 6,
+              display: 'flex', alignItems: 'center', gap: 4,
             }}>
               <span>{m.icon}</span> {m.name}
             </button>
@@ -4672,6 +5027,8 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
           {mode === 'duel' && <DuelMode />}
           {mode === 'double' && <DoubleTrouble />}
           {mode === 'champ' && <Championship />}
+          {mode === 'graph' && <ShapeGallery />}
+          {mode === 'quiz' && <DoublingQuiz />}
         </div>
       </div>
     </section>
