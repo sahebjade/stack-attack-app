@@ -1155,6 +1155,9 @@ const GlobalStyles = () => (
       to { transform: translateX(-50%); }
     }
 
+    details summary::-webkit-details-marker { display: none; }
+    details[open] summary { color: rgba(244,235,214,0.5) !important; }
+
     .grain-bg {
       background-image:
         radial-gradient(ellipse at 20% 10%, rgba(201, 162, 39, 0.05) 0%, transparent 50%),
@@ -3352,12 +3355,177 @@ const ComplexityScoreboard = ({ mins, currentSchool, deckSize, playerComps }) =>
   );
 };
 
+// Growth Challenge Results — shown after completing all 3 rounds
+const GrowthResults = ({ results, school, onDone }) => {
+  const schoolColor = school === 'bubble' ? C.gold : school === 'quick' ? C.crimson : school === 'insertion' ? C.emerald : school === 'selection' ? C.violet : school === 'heap' ? C.slate : school === 'radix' ? C.teal : C.cobalt;
+  const maxComps = Math.max(...results.map(r => r.comps));
+  const isQuadratic = ['bubble', 'selection', 'insertion'].includes(school);
+
+  // Compute growth ratios
+  const ratios = results.map((r, i) => i === 0 ? null : (r.comps / results[i - 1].comps).toFixed(1));
+
+  return (
+    <div style={{
+      padding: '32px 36px', background: C.ink, color: C.cream,
+      animation: 'fadeUp 0.5s ease-out',
+    }}>
+      <Eyebrow color={C.gold}>Growth Challenge Complete</Eyebrow>
+      <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, marginTop: 8, marginBottom: 20 }}>
+        How does <span style={{ color: schoolColor }}>{SCHOOL_NAMES[school]}</span> scale?
+      </div>
+
+      {/* Results table */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 70px 50px', gap: '8px 12px', alignItems: 'center' }}>
+          {/* Header */}
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', letterSpacing: '0.12em' }}>CARDS</div>
+          <div />
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', letterSpacing: '0.12em', textAlign: 'right' }}>COMPS</div>
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', letterSpacing: '0.12em', textAlign: 'right' }}>GROWTH</div>
+
+          {/* Rows */}
+          {results.map((r, i) => (
+            <React.Fragment key={r.n}>
+              <div className="font-serif" style={{ fontSize: 20, fontWeight: 600 }}>{r.n}</div>
+              <div style={{ height: 16, background: 'rgba(244,235,214,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${(r.comps / maxComps) * 100}%`,
+                  background: schoolColor, borderRadius: 2,
+                  transition: 'width 0.8s ease-out',
+                  transitionDelay: `${i * 200}ms`,
+                }} />
+              </div>
+              <div className="font-mono" style={{ fontSize: 14, fontWeight: 600, textAlign: 'right' }}>{r.comps}</div>
+              <div className="font-mono" style={{
+                fontSize: 12, textAlign: 'right', fontWeight: 600,
+                color: ratios[i] ? (parseFloat(ratios[i]) > 3 ? C.crimson : C.emerald) : 'transparent',
+              }}>
+                {ratios[i] ? `${ratios[i]}×` : '—'}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      {/* Insight */}
+      <div style={{
+        padding: '14px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
+        borderLeft: `3px solid ${C.gold}`, marginBottom: 20,
+      }}>
+        <div className="font-sans" style={{ fontSize: 13, color: C.cream, lineHeight: 1.6 }}>
+          {isQuadratic ? (
+            <>
+              Each time you doubled the cards, comparisons grew by <strong style={{ color: C.gold }}>~{ratios[1]}×</strong> then <strong style={{ color: C.gold }}>~{ratios[2]}×</strong>.
+              {' '}That's close to <strong style={{ color: C.gold }}>4×</strong> — because this algorithm is <strong>O(n²)</strong>.
+              {' '}Double the input → quadruple the work!
+            </>
+          ) : school === 'radix' ? (
+            <>
+              Each time you doubled the cards, placements grew by <strong style={{ color: C.gold }}>~{ratios[1]}×</strong> then <strong style={{ color: C.gold }}>~{ratios[2]}×</strong>.
+              {' '}That's close to <strong style={{ color: C.gold }}>2×</strong> — because Radix Sort is <strong>O(nk)</strong>.
+              {' '}Double the input → double the work. Linear scaling!
+            </>
+          ) : (
+            <>
+              Each time you doubled the cards, comparisons grew by <strong style={{ color: C.gold }}>~{ratios[1]}×</strong> then <strong style={{ color: C.gold }}>~{ratios[2]}×</strong>.
+              {' '}That's close to <strong style={{ color: C.gold }}>2×</strong> — because this algorithm is <strong>O(n log n)</strong>.
+              {' '}Double the input → just a little more than double the work. Much better than O(n²)!
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Growth pattern visual */}
+      <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginBottom: 20 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="font-mono" style={{ fontSize: 9, color: 'rgba(244,235,214,0.4)', letterSpacing: '0.12em', marginBottom: 6 }}>
+            O(n²) PATTERN
+          </div>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', justifyContent: 'center', height: 50 }}>
+            {[4, 8, 16].map(n => (
+              <div key={n} style={{
+                width: 16, background: isQuadratic ? schoolColor : 'rgba(244,235,214,0.15)',
+                borderRadius: '2px 2px 0 0',
+                height: `${(n * n) / (16 * 16) * 50}px`,
+              }} />
+            ))}
+          </div>
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', marginTop: 3 }}>4× per double</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div className="font-mono" style={{ fontSize: 9, color: 'rgba(244,235,214,0.4)', letterSpacing: '0.12em', marginBottom: 6 }}>
+            O(n log n) PATTERN
+          </div>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', justifyContent: 'center', height: 50 }}>
+            {[4, 8, 16].map(n => (
+              <div key={n} style={{
+                width: 16, background: !isQuadratic && school !== 'radix' ? schoolColor : 'rgba(244,235,214,0.15)',
+                borderRadius: '2px 2px 0 0',
+                height: `${(n * Math.log2(n)) / (16 * Math.log2(16)) * 50}px`,
+              }} />
+            ))}
+          </div>
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', marginTop: 3 }}>~2× per double</div>
+        </div>
+      </div>
+
+      <div style={{ textAlign: 'center' }}>
+        <button onClick={onDone} style={{
+          background: C.cream, color: C.ink, border: 'none',
+          padding: '10px 24px', fontSize: 12, fontWeight: 600,
+          letterSpacing: '0.1em', textTransform: 'uppercase',
+          cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+        }}>
+          Back to Menu
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const DemoPlay = ({ initial, onReset }) => {
   const [state, dispatch] = useReducer(rootReducer, initial, () =>
     initialState(initial.school, initial.mode, initial.deckSize || 8)
   );
   const hint = state.mode === 'tutorial' ? getTutorialHint(state, 0) : null;
   const allFinished = state.players.every(p => p.finished);
+
+  // Growth Challenge state
+  const [growthChallenge, setGrowthChallenge] = useState(null);
+  // growthChallenge = { school, sizes: [4, 8, 16], currentIdx: 0, results: [{n, comps, mins}] } | null
+  const [growthResults, setGrowthResults] = useState(null);
+
+  const GROWTH_SIZES = [4, 8, 16];
+
+  // When in growth challenge mode and a round finishes, record result and advance
+  const growthRef = useRef(growthChallenge);
+  growthRef.current = growthChallenge;
+  useEffect(() => {
+    if (!allFinished || !growthRef.current) return;
+    const gc = growthRef.current;
+    const p = state.players[0];
+    const newResults = [...gc.results, { n: state.deckSize, comps: p.comparisons, mins: state.mins[p.school] }];
+    const nextIdx = gc.currentIdx + 1;
+    if (nextIdx >= GROWTH_SIZES.length) {
+      // Challenge complete — show results
+      setGrowthResults(newResults);
+      setGrowthChallenge(null);
+    } else {
+      // Start next round after a short delay
+      const timer = setTimeout(() => {
+        setGrowthChallenge({ ...gc, currentIdx: nextIdx, results: newResults });
+        dispatch({ type: 'RESET', school: gc.school, mode: 'solo', deckSize: GROWTH_SIZES[nextIdx] });
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [allFinished]);
+
+  const startGrowthChallenge = () => {
+    const school = state.players[0].school;
+    setGrowthChallenge({ school, sizes: GROWTH_SIZES, currentIdx: 0, results: [] });
+    setGrowthResults(null);
+    dispatch({ type: 'RESET', school, mode: 'solo', deckSize: GROWTH_SIZES[0] });
+  };
 
   // Calculate scores once when finished
   const scores = allFinished ? state.players.map(p => {
@@ -3378,10 +3546,22 @@ const DemoPlay = ({ initial, onReset }) => {
       }}>
         <div>
           <Eyebrow>
-            {state.mode === 'tutorial' ? 'Tutorial' : 'Solo Practice'}
-            {' · '}
-            {state.deckSize} Cards ({deckLabel})
+            {growthChallenge
+              ? `Growth Challenge · Round ${growthChallenge.currentIdx + 1} of ${GROWTH_SIZES.length} · ${state.deckSize} Cards`
+              : `${state.mode === 'tutorial' ? 'Tutorial' : 'Solo Practice'} · ${state.deckSize} Cards (${deckLabel})`
+            }
           </Eyebrow>
+          {growthChallenge && (
+            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              {GROWTH_SIZES.map((sz, i) => (
+                <div key={sz} style={{
+                  width: 24, height: 4, borderRadius: 2,
+                  background: i < growthChallenge.currentIdx ? C.gold
+                    : i === growthChallenge.currentIdx ? C.emerald : C.rule,
+                }} />
+              ))}
+            </div>
+          )}
         </div>
         <button onClick={() => onReset(null)} className="font-mono" style={{
           background: 'transparent', border: 'none', fontSize: 10,
@@ -3419,7 +3599,23 @@ const DemoPlay = ({ initial, onReset }) => {
       </div>
 
       {/* Victory screen */}
-      {allFinished && (
+      {allFinished && growthChallenge && growthChallenge.currentIdx < GROWTH_SIZES.length - 1 && (
+        <div style={{
+          marginTop: 24, padding: '24px 32px', textAlign: 'center',
+          background: C.ink, color: C.cream, animation: 'fadeUp 0.5s ease-out',
+        }}>
+          <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.gold, marginBottom: 8 }}>
+            ROUND {growthChallenge.currentIdx + 1} COMPLETE
+          </div>
+          <div className="font-serif" style={{ fontSize: 24, fontWeight: 500, marginBottom: 4 }}>
+            {state.players[0].comparisons} comparisons on {state.deckSize} cards
+          </div>
+          <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.6)' }}>
+            Next up: <strong style={{ color: C.cream }}>{GROWTH_SIZES[growthChallenge.currentIdx + 1]} cards</strong>. Loading...
+          </div>
+        </div>
+      )}
+      {allFinished && !growthChallenge && !growthResults && (
         <div style={{
           marginTop: 24, padding: '28px 32px',
           background: C.ink, color: C.cream, position: 'relative', overflow: 'hidden',
@@ -3448,20 +3644,12 @@ const DemoPlay = ({ initial, onReset }) => {
                     marginTop: 4, fontWeight: 600,
                   }}>✨ PERFECT — Matched theoretical minimum!</div>
                 )}
-
-                {/* Complexity Scoreboard */}
-                <ComplexityScoreboard
-                  mins={state.mins}
-                  currentSchool={state.players[0].school}
-                  deckSize={state.deckSize}
-                  playerComps={state.players[0].comparisons}
-                />
               </div>
             );
           })()}
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
             <button onClick={() => dispatch({ type: 'RESET' })} style={{
               background: C.cream, color: C.ink, border: 'none',
               padding: '10px 20px', fontSize: 12, fontWeight: 600,
@@ -3479,7 +3667,54 @@ const DemoPlay = ({ initial, onReset }) => {
               Change Settings
             </button>
           </div>
+
+          {/* Collapsible Advanced Section */}
+          <details style={{ marginTop: 20 }}>
+            <summary className="font-mono" style={{
+              fontSize: 10, letterSpacing: '0.15em', color: C.gold,
+              cursor: 'pointer', textAlign: 'center', fontWeight: 600,
+              listStyle: 'none', padding: '8px 0',
+              borderTop: '1px solid rgba(244,235,214,0.1)',
+            }}>
+              ▸ DEEP DIVE — COMPLEXITY ANALYSIS
+            </summary>
+            <div style={{ animation: 'fadeUp 0.3s ease-out' }}>
+              {/* Complexity Scoreboard */}
+              <ComplexityScoreboard
+                mins={state.mins}
+                currentSchool={state.players[0].school}
+                deckSize={state.deckSize}
+                playerComps={state.players[0].comparisons}
+              />
+
+              {/* Growth Challenge */}
+              {!growthChallenge && (
+                <div style={{ textAlign: 'center', marginTop: 16 }}>
+                  <button onClick={startGrowthChallenge} style={{
+                    background: C.gold, color: C.ink, border: 'none',
+                    padding: '10px 20px', fontSize: 12, fontWeight: 600,
+                    letterSpacing: '0.1em', textTransform: 'uppercase',
+                    cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  }}>
+                    ⚡ Growth Challenge
+                  </button>
+                  <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.5)', marginTop: 6 }}>
+                    Sort 4 → 8 → 16 cards and watch complexity grow
+                  </div>
+                </div>
+              )}
+            </div>
+          </details>
         </div>
+      )}
+
+      {/* Growth Challenge Results */}
+      {growthResults && (
+        <GrowthResults
+          results={growthResults}
+          school={initial.school}
+          onDone={() => { setGrowthResults(null); onReset(null); }}
+        />
       )}
 
       {/* Activity log */}
