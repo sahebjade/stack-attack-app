@@ -4002,7 +4002,7 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
 });
 
 // ============================================================================
-// COMPLEXITY QUEST — Teaching time complexity through everyday examples
+// COMPLEXITY QUEST — Card & Board Games for Time Complexity
 // ============================================================================
 
 // Keep ALGO_DATA for sorting game references
@@ -4016,541 +4016,530 @@ const ALGO_DATA = [
   { key: 'radix', name: 'Radix Sort', icon: '⚡', tier: 'Lightning', tierColor: C.teal, fn: n => n * 2, desc: 'Sorts by digit — no comparisons!' },
 ];
 
-// Speed tiers for time complexity (kid-friendly)
-const SPEED_TIERS = [
-  { id: 'instant', icon: '⚡', name: 'Instant', color: C.teal, desc: 'Always the same, no matter how big!', example: 'Grab the first cookie from the jar', fn: () => 1 },
-  { id: 'steady', icon: '🚶', name: 'Steady', color: C.emerald, desc: 'Grows step-by-step with the size.', example: 'Read every page of a book', fn: n => n },
-  { id: 'clever', icon: '🧠', name: 'Clever', color: C.cobalt, desc: 'Cuts in half each time — super smart!', example: 'Guess a number with higher/lower hints', fn: n => Math.ceil(Math.log2(n)) },
-  { id: 'explosion', icon: '💥', name: 'Explosion', color: C.crimson, desc: 'Everyone meets everyone — gets huge FAST.', example: 'Handshakes at a party', fn: n => Math.round(n * (n - 1) / 2) },
+// Growth pattern definitions (the "powers" in our card games)
+const POWERS = [
+  { id: 'instant', icon: '⚡', name: 'Instant', color: C.teal, fn: () => 1, formula: 'Always 1', tier: 'Legendary' },
+  { id: 'clever', icon: '🧠', name: 'Clever', color: C.cobalt, fn: n => Math.max(1, Math.ceil(Math.log2(n))), formula: 'log₂(n)', tier: 'Rare' },
+  { id: 'steady', icon: '🚶', name: 'Steady', color: C.emerald, fn: n => n, formula: 'n', tier: 'Common' },
+  { id: 'explosion', icon: '💥', name: 'Explosion', color: C.crimson, fn: n => n * n, formula: 'n²', tier: 'Cursed' },
 ];
 
-// --- Game 1: The Handshake Party ---
-const HandshakeGame = () => {
-  const [people, setPeople] = useState(2);
-  const [shakes, setShakes] = useState([]);
-  const [animating, setAnimating] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-  const maxPeople = 8;
+// Shared card component
+const GameCard = ({ icon, title, subtitle, color, small, faceDown, onClick, selected, glow, style: extraStyle }) => (
+  <div onClick={onClick} style={{
+    width: small ? 64 : 80, minHeight: small ? 88 : 110,
+    background: faceDown ? 'linear-gradient(135deg, rgba(244,235,214,0.08) 0%, rgba(244,235,214,0.03) 100%)'
+      : `linear-gradient(135deg, ${color}18 0%, ${color}08 100%)`,
+    border: selected ? `2px solid ${color || C.gold}` : glow ? `2px solid ${C.gold}` : '1px solid rgba(244,235,214,0.12)',
+    borderRadius: 8, padding: small ? '8px 4px' : '10px 6px',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    gap: 4, cursor: onClick ? 'pointer' : 'default',
+    boxShadow: selected ? `0 0 12px ${color}40` : glow ? `0 0 8px ${C.gold}30` : 'none',
+    transition: 'all 0.2s ease', textAlign: 'center',
+    transform: selected ? 'translateY(-4px)' : 'none',
+    ...extraStyle,
+  }}>
+    {faceDown ? (
+      <div style={{ fontSize: small ? 20 : 28, opacity: 0.3 }}>🃏</div>
+    ) : (
+      <>
+        <div style={{ fontSize: small ? 20 : 28, lineHeight: 1 }}>{icon}</div>
+        {title && <div className="font-mono" style={{ fontSize: small ? 8 : 9, fontWeight: 700, color: color || C.cream, letterSpacing: '0.05em', lineHeight: 1.2 }}>{title}</div>}
+        {subtitle && <div className="font-mono" style={{ fontSize: small ? 7 : 8, color: 'rgba(244,235,214,0.5)', lineHeight: 1.2 }}>{subtitle}</div>}
+      </>
+    )}
+  </div>
+);
 
-  const totalShakes = people * (people - 1) / 2;
-  const names = ['🧒', '👧', '👦', '👩', '🧑', '👨', '👵', '👴'];
+// ─── Game 1: Speed Battle (Card War vs Computer) ───
+const SpeedBattle = () => {
+  const taskSizes = [4, 8, 16, 32, 8, 64, 16, 32, 128];
+  const totalRounds = taskSizes.length;
 
-  const showHandshakes = () => {
-    setAnimating(true);
-    setShakes([]);
-    setRevealed(false);
-    const pairs = [];
-    for (let i = 0; i < people; i++) {
-      for (let j = i + 1; j < people; j++) {
-        pairs.push([i, j]);
-      }
+  const [round, setRound] = useState(0);
+  const [playerScore, setPlayerScore] = useState(0);
+  const [cpuScore, setCpuScore] = useState(0);
+  const [playerPick, setPlayerPick] = useState(null);
+  const [cpuPick, setCpuPick] = useState(null);
+  const [phase, setPhase] = useState('pick'); // pick | reveal | done
+  const [results, setResults] = useState([]);
+
+  const currentSize = taskSizes[round];
+
+  const playCard = (powerId) => {
+    if (phase !== 'pick') return;
+    const cpuChoice = POWERS[Math.floor(Math.random() * POWERS.length)].id;
+    setPlayerPick(powerId);
+    setCpuPick(cpuChoice);
+
+    const pPow = POWERS.find(p => p.id === powerId);
+    const cPow = POWERS.find(p => p.id === cpuChoice);
+    const pSteps = pPow.fn(currentSize);
+    const cSteps = cPow.fn(currentSize);
+    const winner = pSteps < cSteps ? 'player' : pSteps > cSteps ? 'cpu' : 'tie';
+
+    if (winner === 'player') setPlayerScore(s => s + 1);
+    else if (winner === 'cpu') setCpuScore(s => s + 1);
+
+    setResults(prev => [...prev, { size: currentSize, player: powerId, cpu: cpuChoice, pSteps, cSteps, winner }]);
+    setPhase('reveal');
+  };
+
+  const nextRound = () => {
+    if (round + 1 >= totalRounds) {
+      setPhase('done');
+    } else {
+      setRound(r => r + 1);
+      setPlayerPick(null);
+      setCpuPick(null);
+      setPhase('pick');
     }
-    let idx = 0;
-    const timer = setInterval(() => {
-      if (idx < pairs.length) {
-        setShakes(prev => [...prev, pairs[idx]]);
-        idx++;
-      } else {
-        clearInterval(timer);
-        setAnimating(false);
-        setRevealed(true);
-      }
-    }, Math.max(80, 400 - people * 30));
   };
 
-  const history = [];
-  for (let p = 2; p <= maxPeople; p++) {
-    history.push({ n: p, shakes: p * (p - 1) / 2 });
-  }
-  const maxH = history[history.length - 1].shakes;
+  const restart = () => {
+    setRound(0); setPlayerScore(0); setCpuScore(0);
+    setPlayerPick(null); setCpuPick(null);
+    setPhase('pick'); setResults([]);
+  };
 
-  return (
-    <div>
-      <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.7)', marginBottom: 16, lineHeight: 1.6 }}>
-        At a party, <strong style={{ color: C.cream }}>every person shakes hands with every other person</strong>.
-        How many handshakes happen? Add people and watch!
-      </div>
+  if (phase === 'done') {
+    const won = playerScore > cpuScore;
+    const tied = playerScore === cpuScore;
+    return (
+      <div style={{ textAlign: 'center', animation: 'fadeUp 0.4s ease-out' }}>
+        <div style={{ fontSize: 56, marginBottom: 8 }}>{won ? '🏆' : tied ? '🤝' : '😤'}</div>
+        <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, color: C.cream, marginBottom: 4 }}>
+          {won ? 'You Win!' : tied ? "It's a Tie!" : 'Computer Wins!'}
+        </div>
+        <div className="font-mono" style={{ fontSize: 14, color: C.gold, marginBottom: 16 }}>
+          You {playerScore} — {cpuScore} CPU
+        </div>
 
-      {/* People selector */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold }}>GUESTS:</div>
-        {[2, 3, 4, 5, 6, 7, 8].map(p => (
-          <button key={p} onClick={() => { setPeople(p); setShakes([]); setRevealed(false); setAnimating(false); }} style={{
-            width: 32, height: 32, borderRadius: '50%',
-            background: people === p ? C.gold : 'rgba(244,235,214,0.06)',
-            color: people === p ? C.ink : 'rgba(244,235,214,0.5)',
-            border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            fontFamily: 'JetBrains Mono, monospace',
-          }}>
-            {p}
-          </button>
-        ))}
-      </div>
-
-      {/* Party visualization */}
-      <div style={{
-        position: 'relative', height: 180, marginBottom: 16,
-        background: 'rgba(244,235,214,0.03)', borderRadius: 8, overflow: 'hidden',
-      }}>
-        {/* People in circle */}
-        {Array.from({ length: people }).map((_, i) => {
-          const angle = (2 * Math.PI * i / people) - Math.PI / 2;
-          const cx = 50 + 35 * Math.cos(angle);
-          const cy = 50 + 38 * Math.sin(angle);
-          return (
+        {/* Round history */}
+        <div style={{ display: 'flex', gap: 3, justifyContent: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          {results.map((r, i) => (
             <div key={i} style={{
-              position: 'absolute', left: `${cx}%`, top: `${cy}%`,
-              transform: 'translate(-50%, -50%)', fontSize: 28, zIndex: 2,
+              width: 28, height: 28, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14,
+              background: r.winner === 'player' ? 'rgba(46,125,91,0.3)' : r.winner === 'cpu' ? 'rgba(168,50,43,0.3)' : 'rgba(244,235,214,0.1)',
             }}>
-              {names[i]}
-            </div>
-          );
-        })}
-
-        {/* Handshake lines */}
-        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          {shakes.map(([a, b], idx) => {
-            const aAngle = (2 * Math.PI * a / people) - Math.PI / 2;
-            const bAngle = (2 * Math.PI * b / people) - Math.PI / 2;
-            const ax = 50 + 35 * Math.cos(aAngle);
-            const ay = 50 + 38 * Math.sin(aAngle);
-            const bx = 50 + 35 * Math.cos(bAngle);
-            const by = 50 + 38 * Math.sin(bAngle);
-            return (
-              <line key={idx}
-                x1={`${ax}%`} y1={`${ay}%`}
-                x2={`${bx}%`} y2={`${by}%`}
-                stroke={C.gold} strokeWidth={1.5} opacity={0.6}
-              />
-            );
-          })}
-        </svg>
-
-        {/* Counter */}
-        <div style={{ position: 'absolute', bottom: 8, right: 12 }}>
-          <div className="font-mono" style={{ fontSize: 24, fontWeight: 700, color: C.gold }}>
-            {shakes.length}
-          </div>
-          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)' }}>handshakes</div>
-        </div>
-      </div>
-
-      {/* Start button */}
-      <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        {!animating && !revealed && (
-          <button onClick={showHandshakes} style={{
-            background: C.gold, color: C.ink, border: 'none',
-            padding: '10px 24px', fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-          }}>
-            🤝 Count the Handshakes!
-          </button>
-        )}
-        {animating && (
-          <div className="font-mono" style={{ fontSize: 11, color: C.gold, animation: 'shimmer 1s ease-in-out infinite' }}>
-            Shaking hands... {shakes.length} / {totalShakes}
-          </div>
-        )}
-      </div>
-
-      {/* Growth pattern */}
-      {revealed && (
-        <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
-          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 6, fontWeight: 600 }}>
-            THE PATTERN — WATCH IT EXPLODE 💥
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 60, marginBottom: 8 }}>
-            {history.filter(h => h.n <= people).map(h => (
-              <div key={h.n} style={{ flex: 1, textAlign: 'center' }}>
-                <div className="font-mono" style={{ fontSize: 9, color: C.cream, fontWeight: 600, marginBottom: 2 }}>
-                  {h.shakes}
-                </div>
-                <div style={{
-                  height: `${maxH > 0 ? (h.shakes / maxH) * 50 : 0}px`,
-                  background: h.n === people ? C.gold : 'rgba(244,235,214,0.15)',
-                  borderRadius: '2px 2px 0 0', minHeight: 2,
-                }} />
-                <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', marginTop: 2 }}>
-                  {h.n}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{
-            padding: '12px 14px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
-            borderLeft: `3px solid ${C.crimson}`,
-          }}>
-            <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.6 }}>
-              💥 This is <strong style={{ color: C.crimson }}>"Explosion" growth</strong> — when everyone must meet everyone.
-              {people >= 4 && <>{' '}With just {people} people that's already <strong style={{ color: C.gold }}>{totalShakes}</strong> handshakes!</>}
-              {people >= 6 && <>{' '}Imagine a school with 100 students — that's <strong style={{ color: C.gold }}>4,950</strong> handshakes! 🤯</>}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Game 2: The Guessing Game (teaches O(log n)) ---
-const GuessingGame = () => {
-  const [range, setRange] = useState(16);
-  const [secret, setSecret] = useState(null);
-  const [lo, setLo] = useState(1);
-  const [hi, setHi] = useState(16);
-  const [guesses, setGuesses] = useState([]);
-  const [mode, setMode] = useState(null); // 'smart' | 'random'
-  const [found, setFound] = useState(false);
-
-  const startGame = (m) => {
-    const s = Math.floor(Math.random() * range) + 1;
-    setSecret(s);
-    setLo(1);
-    setHi(range);
-    setGuesses([]);
-    setMode(m);
-    setFound(false);
-  };
-
-  const smartGuess = () => {
-    if (found) return;
-    const mid = Math.floor((lo + hi) / 2);
-    const result = mid === secret ? 'found' : mid < secret ? 'higher' : 'lower';
-    setGuesses(prev => [...prev, { num: mid, result }]);
-    if (result === 'found') { setFound(true); return; }
-    if (result === 'higher') setLo(mid + 1);
-    else setHi(mid - 1);
-  };
-
-  const randomGuess = () => {
-    if (found) return;
-    // Pick random from remaining range
-    let g;
-    const tried = new Set(guesses.map(g => g.num));
-    do { g = Math.floor(Math.random() * range) + 1; } while (tried.has(g) && tried.size < range);
-    const result = g === secret ? 'found' : g < secret ? 'higher' : 'lower';
-    setGuesses(prev => [...prev, { num: g, result }]);
-    if (result === 'found') setFound(true);
-  };
-
-  const doGuess = mode === 'smart' ? smartGuess : randomGuess;
-
-  const optimalGuesses = Math.ceil(Math.log2(range));
-
-  const ranges = [8, 16, 32, 64, 128, 256];
-
-  return (
-    <div>
-      <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.7)', marginBottom: 16, lineHeight: 1.6 }}>
-        I'm thinking of a number between 1 and <strong style={{ color: C.cream }}>{range}</strong>.
-        Can you find it? Compare <strong style={{ color: C.cobalt }}>🧠 Clever</strong> (always guess the middle)
-        vs <strong style={{ color: C.gold }}>🎲 Random</strong> guessing!
-      </div>
-
-      {/* Range picker */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold }}>RANGE:</div>
-        {ranges.map(r => (
-          <button key={r} onClick={() => { setRange(r); setSecret(null); setMode(null); setGuesses([]); setFound(false); }} style={{
-            background: range === r ? C.cream : 'rgba(244,235,214,0.06)',
-            color: range === r ? C.ink : 'rgba(244,235,214,0.5)',
-            border: 'none', padding: '4px 10px', fontSize: 11, borderRadius: 3,
-            cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
-          }}>
-            1-{r}
-          </button>
-        ))}
-      </div>
-
-      {/* Mode selector or game */}
-      {!secret ? (
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-          <button onClick={() => startGame('smart')} style={{
-            background: C.cobalt, color: C.cream, border: 'none',
-            padding: '12px 20px', fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 6,
-          }}>
-            🧠 Clever Search
-          </button>
-          <button onClick={() => startGame('random')} style={{
-            background: C.gold, color: C.ink, border: 'none',
-            padding: '12px 20px', fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 6,
-          }}>
-            🎲 Random Guess
-          </button>
-        </div>
-      ) : (
-        <div>
-          {/* Number line */}
-          <div style={{ marginBottom: 12, padding: '8px 0' }}>
-            <div style={{ display: 'flex', height: 32, borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
-              {Array.from({ length: range }).map((_, i) => {
-                const num = i + 1;
-                const guessed = guesses.find(g => g.num === num);
-                const inRange = num >= lo && num <= hi;
-                const isSecret = found && num === secret;
-                return (
-                  <div key={num} style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: isSecret ? C.emerald : guessed ? (guessed.result === 'higher' ? 'rgba(44,74,127,0.3)' : 'rgba(168,50,43,0.3)')
-                      : inRange ? 'rgba(244,235,214,0.08)' : 'rgba(244,235,214,0.02)',
-                    borderRight: '1px solid rgba(244,235,214,0.04)',
-                    fontSize: range <= 32 ? 8 : 0, color: C.cream, fontFamily: 'JetBrains Mono, monospace',
-                    fontWeight: isSecret ? 800 : 400,
-                  }}>
-                    {range <= 32 && (isSecret ? '★' : guessed ? (guessed.result === 'higher' ? '↑' : '↓') : '')}
-                  </div>
-                );
-              })}
-            </div>
-            {range <= 32 && (
-              <div style={{ display: 'flex' }}>
-                {Array.from({ length: range }).map((_, i) => (
-                  <div key={i} className="font-mono" style={{
-                    flex: 1, fontSize: 6, textAlign: 'center', color: 'rgba(244,235,214,0.2)', marginTop: 2,
-                  }}>{i + 1}</div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Guess history */}
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12, minHeight: 28 }}>
-            {guesses.map((g, i) => (
-              <div key={i} className="font-mono" style={{
-                padding: '3px 8px', borderRadius: 3, fontSize: 10, fontWeight: 600,
-                background: g.result === 'found' ? C.emerald : g.result === 'higher' ? 'rgba(44,74,127,0.3)' : 'rgba(168,50,43,0.3)',
-                color: C.cream,
-              }}>
-                {g.num} {g.result === 'found' ? '✓' : g.result === 'higher' ? '↑' : '↓'}
-              </div>
-            ))}
-          </div>
-
-          {/* Action */}
-          <div style={{ textAlign: 'center' }}>
-            {!found ? (
-              <button onClick={doGuess} style={{
-                background: mode === 'smart' ? C.cobalt : C.gold,
-                color: mode === 'smart' ? C.cream : C.ink,
-                border: 'none', padding: '10px 24px', fontSize: 13, fontWeight: 700,
-                cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-              }}>
-                {mode === 'smart' ? '🧠 Guess Middle' : '🎲 Random Guess'}
-                {' '}(#{guesses.length + 1})
-              </button>
-            ) : (
-              <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
-                <div className="font-serif" style={{ fontSize: 24, fontWeight: 500, marginBottom: 4 }}>
-                  Found <strong style={{ color: C.gold }}>{secret}</strong> in <strong style={{ color: C.emerald }}>{guesses.length}</strong> guess{guesses.length !== 1 ? 'es' : ''}!
-                </div>
-                <div className="font-mono" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)', marginBottom: 8 }}>
-                  🧠 Clever search always finds it in ≤ {optimalGuesses} guesses (for 1-{range})
-                </div>
-                <div style={{
-                  padding: '12px 14px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
-                  borderLeft: `3px solid ${C.cobalt}`, textAlign: 'left', marginBottom: 12,
-                }}>
-                  <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.6 }}>
-                    🧠 <strong style={{ color: C.cobalt }}>"Clever" search</strong> always picks the middle — cutting possibilities in half each time.
-                    {' '}Even with <strong style={{ color: C.cream }}>256</strong> numbers, it only needs <strong style={{ color: C.gold }}>8</strong> guesses.
-                    {' '}With <strong style={{ color: C.cream }}>1,000,000</strong> numbers? Just <strong style={{ color: C.gold }}>20</strong> guesses!
-                    {' '}That's the magic of <strong style={{ color: C.cobalt }}>halving</strong>. 🪄
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                  <button onClick={() => startGame('smart')} style={{
-                    background: C.cobalt, color: C.cream, border: 'none',
-                    padding: '8px 16px', fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-                  }}>🧠 Try Clever</button>
-                  <button onClick={() => startGame('random')} style={{
-                    background: C.gold, color: C.ink, border: 'none',
-                    padding: '8px 16px', fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-                  }}>🎲 Try Random</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Game 3: Growth Lab — see how different patterns scale ---
-const GrowthLab = () => {
-  const [input, setInput] = useState(4);
-  const [showAll, setShowAll] = useState(false);
-
-  const patterns = [
-    { id: 'instant', icon: '⚡', name: 'Instant', color: C.teal, fn: () => 1, example: 'Grab the top card', real: 'Look at the first item in a list' },
-    { id: 'halving', icon: '🧠', name: 'Clever', color: C.cobalt, fn: n => Math.ceil(Math.log2(n)), example: 'Find a word in a dictionary', real: 'Guess a number with hints' },
-    { id: 'steady', icon: '🚶', name: 'Steady', color: C.emerald, fn: n => n, example: 'High-five everyone in line', real: 'Check every student\'s homework' },
-    { id: 'busy', icon: '🏃', name: 'Busy', color: C.gold, fn: n => Math.round(n * Math.log2(n)), example: 'Sort papers by splitting into groups', real: 'Organize a library efficiently' },
-    { id: 'explosion', icon: '💥', name: 'Explosion', color: C.crimson, fn: n => n * n, example: 'Everyone shakes hands with everyone', real: 'Compare every pair of students' },
-  ];
-
-  const sizes = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
-  const displaySizes = showAll ? sizes : sizes.filter(s => s <= 64);
-  const maxSteps = patterns[patterns.length - 1].fn(displaySizes[displaySizes.length - 1]);
-
-  return (
-    <div>
-      <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.7)', marginBottom: 16, lineHeight: 1.6 }}>
-        How does the number of <strong style={{ color: C.cream }}>steps</strong> change when the input gets bigger?
-        Tap different sizes and watch the patterns!
-      </div>
-
-      {/* Size slider */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginRight: 4 }}>INPUT SIZE:</div>
-        {displaySizes.map(s => (
-          <button key={s} onClick={() => setInput(s)} style={{
-            background: input === s ? C.cream : 'rgba(244,235,214,0.06)',
-            color: input === s ? C.ink : 'rgba(244,235,214,0.5)',
-            border: 'none', padding: '3px 7px', fontSize: 10, borderRadius: 3,
-            cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
-          }}>
-            {s}
-          </button>
-        ))}
-        {!showAll && (
-          <button onClick={() => setShowAll(true)} className="font-mono" style={{
-            background: 'none', border: 'none', color: C.gold, fontSize: 9, cursor: 'pointer', fontWeight: 600,
-          }}>more →</button>
-        )}
-      </div>
-
-      {/* Results table */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-        {patterns.map(p => {
-          const steps = p.fn(input);
-          const barMax = patterns[patterns.length - 1].fn(input);
-          const pct = barMax > 0 ? Math.min((steps / barMax) * 100, 100) : 0;
-          return (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 20, fontSize: 16, textAlign: 'center' }}>{p.icon}</div>
-              <div className="font-mono" style={{ width: 60, fontSize: 9, color: p.color, fontWeight: 700 }}>{p.name}</div>
-              <div style={{ flex: 1, height: 20, background: 'rgba(244,235,214,0.06)', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
-                <div style={{
-                  height: '100%', width: `${Math.max(pct, 1)}%`,
-                  background: p.color, borderRadius: 3,
-                  transition: 'width 0.4s ease-out',
-                  minWidth: 2,
-                }} />
-              </div>
-              <div className="font-mono" style={{ width: 50, fontSize: 11, fontWeight: 700, color: C.cream, textAlign: 'right' }}>
-                {steps > 999999 ? `${(steps / 1000000).toFixed(1)}M` : steps > 999 ? `${(steps / 1000).toFixed(1)}K` : steps}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Ratio display for current input */}
-      {input >= 4 && (
-        <div style={{
-          padding: '12px 14px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
-          borderLeft: `3px solid ${C.gold}`, marginBottom: 12,
-        }}>
-          <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.6 }}>
-            With <strong style={{ color: C.gold }}>{input}</strong> items:
-            {' '}⚡ Instant = <strong>{patterns[0].fn(input)}</strong> step
-            {' · '}🧠 Clever = <strong>{patterns[1].fn(input)}</strong>
-            {' · '}🚶 Steady = <strong>{patterns[2].fn(input)}</strong>
-            {' · '}💥 Explosion = <strong style={{ color: C.crimson }}>{patterns[4].fn(input).toLocaleString()}</strong> steps!
-            {input >= 32 && <><br />💡 See how 💥 Explosion goes crazy while 🧠 Clever barely grows?</>}
-          </div>
-        </div>
-      )}
-
-      {/* Real-world examples */}
-      <details style={{ marginTop: 8 }}>
-        <summary className="font-mono" style={{ fontSize: 9, letterSpacing: '0.12em', color: C.gold, cursor: 'pointer', fontWeight: 600, listStyle: 'none' }}>
-          ▸ REAL-WORLD EXAMPLES
-        </summary>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-          {patterns.map(p => (
-            <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 16 }}>{p.icon}</span>
-              <div>
-                <div className="font-mono" style={{ fontSize: 9, color: p.color, fontWeight: 600 }}>{p.name}</div>
-                <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.6)' }}>{p.example}</div>
-              </div>
+              {POWERS.find(p => p.id === r.player).icon}
             </div>
           ))}
         </div>
-      </details>
+
+        <div style={{
+          padding: '14px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
+          borderLeft: `3px solid ${C.gold}`, textAlign: 'left', marginBottom: 16, maxWidth: 500, margin: '0 auto 16px',
+        }}>
+          <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+            💡 <strong style={{ color: C.gold }}>Strategy tip:</strong> ⚡ <strong style={{ color: C.teal }}>Instant</strong> always wins —
+            it takes 1 step no matter the task size. 🧠 <strong style={{ color: C.cobalt }}>Clever</strong> is great too — even at 128 items
+            it only needs 7 steps! But 💥 <strong style={{ color: C.crimson }}>Explosion</strong> takes <strong>{128 * 128}</strong> steps for 128 items. Yikes!
+          </div>
+        </div>
+
+        <button onClick={restart} style={{
+          background: C.gold, color: C.ink, border: 'none',
+          padding: '10px 28px', fontSize: 13, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+        }}>
+          Play Again
+        </button>
+      </div>
+    );
+  }
+
+  const pPow = playerPick ? POWERS.find(p => p.id === playerPick) : null;
+  const cPow = cpuPick ? POWERS.find(p => p.id === cpuPick) : null;
+
+  return (
+    <div>
+      {/* Scoreboard */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div className="font-mono" style={{ fontSize: 11, color: C.emerald, fontWeight: 700 }}>
+          YOU: {playerScore}
+        </div>
+        <div style={{ display: 'flex', gap: 3 }}>
+          {taskSizes.map((_, i) => (
+            <div key={i} style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: i < round ? (results[i]?.winner === 'player' ? C.emerald : results[i]?.winner === 'cpu' ? C.crimson : C.gold)
+                : i === round ? C.cream : 'rgba(244,235,214,0.1)',
+            }} />
+          ))}
+        </div>
+        <div className="font-mono" style={{ fontSize: 11, color: C.crimson, fontWeight: 700 }}>
+          CPU: {cpuScore}
+        </div>
+      </div>
+
+      {/* Task card (center) */}
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 8 }}>
+          ROUND {round + 1} — TASK CARD
+        </div>
+        <div style={{
+          display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          width: 120, height: 80, borderRadius: 10,
+          background: 'linear-gradient(135deg, rgba(206,187,142,0.15) 0%, rgba(206,187,142,0.05) 100%)',
+          border: `2px solid ${C.gold}`, boxShadow: `0 0 20px ${C.gold}20`,
+        }}>
+          <div className="font-mono" style={{ fontSize: 9, color: C.gold, letterSpacing: '0.1em', marginBottom: 2 }}>TASK SIZE</div>
+          <div className="font-serif" style={{ fontSize: 36, fontWeight: 700, color: C.cream }}>{currentSize}</div>
+        </div>
+      </div>
+
+      {/* Battle area */}
+      {phase === 'reveal' && pPow && cPow && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginBottom: 16, animation: 'fadeUp 0.3s ease-out' }}>
+          {/* Player card */}
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 8, color: C.emerald, marginBottom: 4, letterSpacing: '0.1em' }}>YOUR CARD</div>
+            <GameCard icon={pPow.icon} title={pPow.name} subtitle={`${pPow.fn(currentSize)} steps`} color={pPow.color} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', fontSize: 24 }}>⚔️</div>
+          {/* CPU card */}
+          <div style={{ textAlign: 'center' }}>
+            <div className="font-mono" style={{ fontSize: 8, color: C.crimson, marginBottom: 4, letterSpacing: '0.1em' }}>CPU'S CARD</div>
+            <GameCard icon={cPow.icon} title={cPow.name} subtitle={`${cPow.fn(currentSize)} steps`} color={cPow.color} />
+          </div>
+        </div>
+      )}
+
+      {/* Result */}
+      {phase === 'reveal' && (
+        <div style={{ textAlign: 'center', marginBottom: 16, animation: 'fadeUp 0.3s ease-out' }}>
+          {(() => {
+            const last = results[results.length - 1];
+            if (!last) return null;
+            const winColor = last.winner === 'player' ? C.emerald : last.winner === 'cpu' ? C.crimson : C.gold;
+            return (
+              <>
+                <div className="font-serif" style={{ fontSize: 20, fontWeight: 500, color: winColor, marginBottom: 4 }}>
+                  {last.winner === 'player' ? '✓ You Win This Round!' : last.winner === 'cpu' ? '✗ CPU Wins!' : '— Tie!'}
+                </div>
+                <div className="font-mono" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)' }}>
+                  {last.pSteps} steps vs {last.cSteps} steps · fewer steps wins!
+                </div>
+              </>
+            );
+          })()}
+          <button onClick={nextRound} style={{
+            background: C.cream, color: C.ink, border: 'none', marginTop: 12,
+            padding: '8px 24px', fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            {round + 1 < totalRounds ? 'Next Round →' : 'See Final Score'}
+          </button>
+        </div>
+      )}
+
+      {/* Hand of cards */}
+      {phase === 'pick' && (
+        <div>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 8, textAlign: 'center' }}>
+            PLAY A POWER CARD — FEWEST STEPS WINS
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {POWERS.map(p => (
+              <GameCard
+                key={p.id}
+                icon={p.icon}
+                title={p.name}
+                subtitle={`${p.fn(currentSize)} steps`}
+                color={p.color}
+                onClick={() => playCard(p.id)}
+              />
+            ))}
+          </div>
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', textAlign: 'center', marginTop: 8 }}>
+            Tap a card to play it!
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// --- Game 4: Pattern Spotter Challenge ---
-const PatternSpotter = () => {
-  const challenges = [
-    { q: "You have a bookshelf. You grab book #5 directly.", answer: 'instant', hint: 'You knew exactly where it was!' },
-    { q: "Reading every student's name at roll call (25 students).", answer: 'steady', hint: 'You go through each one, no skipping.' },
-    { q: "A teacher checks if ANY two students wore the same outfit.", answer: 'explosion', hint: 'You compare every student with every other student!' },
-    { q: "Finding a word in a dictionary by opening to the middle, then halving.", answer: 'halving', hint: 'Each step cuts your options in half.' },
-    { q: "Turning on a light switch.", answer: 'instant', hint: 'It works the same whether you have 1 or 100 lights.' },
-    { q: "Searching for your friend in a line of people, one by one.", answer: 'steady', hint: 'More people in line = more people to check.' },
-    { q: "A round-robin tournament: every team plays every other team.", answer: 'explosion', hint: 'Every pair must play — pairs grow fast!' },
-    { q: "Looking up a contact by name in your phone (it jumps to the right letter).", answer: 'halving', hint: 'Your phone uses a smart searching trick!' },
-    { q: "Checking if a number is even or odd.", answer: 'instant', hint: 'Just look at the last digit — done!' },
-    { q: "Counting how many red cars are in a parking lot.", answer: 'steady', hint: 'You have to look at every car.' },
+// ─── Game 2: The Great Race (Board Game) ───
+const TheGreatRace = () => {
+  const [turn, setTurn] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [energy] = useState(() => POWERS.map(() => 1000));
+  const [positions, setPositions] = useState(() => POWERS.map(() => 0));
+  const [eliminated, setEliminated] = useState(() => POWERS.map(() => false));
+  const [log, setLog] = useState([]);
+  const [gameOver, setGameOver] = useState(false);
+
+  const sizes = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
+  const maxTurns = sizes.length;
+  const trackLen = 10;
+
+  const advanceTurn = () => {
+    if (turn >= maxTurns || gameOver) return;
+    setRunning(true);
+
+    const size = sizes[turn];
+    const newPos = [...positions];
+    const newElim = [...eliminated];
+    const costs = POWERS.map(p => p.fn(size));
+    const minCost = Math.min(...costs.filter((_, i) => !newElim[i]));
+
+    const roundLog = [];
+    costs.forEach((cost, i) => {
+      if (newElim[i]) return;
+      if (cost <= size * 2) {
+        newPos[i] = Math.min(newPos[i] + 1, trackLen);
+        roundLog.push({ idx: i, moved: true, cost });
+      } else {
+        roundLog.push({ idx: i, moved: false, cost });
+        if (cost > size * 10) {
+          newElim[i] = true;
+          roundLog[roundLog.length - 1].eliminated = true;
+        }
+      }
+    });
+
+    setPositions(newPos);
+    setEliminated(newElim);
+    setLog(prev => [...prev, { turn: turn + 1, size, entries: roundLog }]);
+    setTurn(t => t + 1);
+
+    if (turn + 1 >= maxTurns || newPos.some(p => p >= trackLen)) {
+      setGameOver(true);
+    }
+    setTimeout(() => setRunning(false), 300);
+  };
+
+  const restart = () => {
+    setTurn(0); setPositions(POWERS.map(() => 0)); setEliminated(POWERS.map(() => false));
+    setLog([]); setGameOver(false); setRunning(false);
+  };
+
+  const leader = positions.reduce((best, pos, i) => pos > positions[best] ? i : best, 0);
+
+  return (
+    <div>
+      {/* Turn counter */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="font-mono" style={{ fontSize: 9, color: C.gold, letterSpacing: '0.12em' }}>
+          {gameOver ? 'RACE OVER' : `TURN ${turn + 1} OF ${maxTurns}`}
+        </div>
+        <div className="font-mono" style={{ fontSize: 9, color: 'rgba(244,235,214,0.5)' }}>
+          {turn < maxTurns && !gameOver && `Task size: ${sizes[turn]}`}
+        </div>
+      </div>
+
+      {/* Race board */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+        {POWERS.map((p, i) => (
+          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: eliminated[i] ? 0.3 : 1 }}>
+            <div style={{ width: 24, textAlign: 'center', fontSize: 18 }}>{p.icon}</div>
+            <div className="font-mono" style={{ width: 52, fontSize: 9, color: p.color, fontWeight: 700 }}>{p.name}</div>
+            <div style={{ flex: 1, height: 28, background: 'rgba(244,235,214,0.04)', borderRadius: 4, position: 'relative', overflow: 'hidden' }}>
+              {/* Track markers */}
+              {Array.from({ length: trackLen + 1 }).map((_, j) => (
+                <div key={j} style={{
+                  position: 'absolute', left: `${(j / trackLen) * 100}%`, top: 0, bottom: 0,
+                  width: 1, background: 'rgba(244,235,214,0.06)',
+                }} />
+              ))}
+              {/* Runner */}
+              <div style={{
+                position: 'absolute', left: `${(positions[i] / trackLen) * 100}%`, top: '50%',
+                transform: 'translate(-50%, -50%)', fontSize: 18, zIndex: 2,
+                transition: 'left 0.4s ease-out',
+                filter: eliminated[i] ? 'grayscale(1)' : 'none',
+              }}>
+                {eliminated[i] ? '💀' : p.icon}
+              </div>
+              {/* Progress fill */}
+              <div style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0,
+                width: `${(positions[i] / trackLen) * 100}%`,
+                background: `${p.color}15`, borderRadius: 4,
+                transition: 'width 0.4s ease-out',
+              }} />
+              {/* Finish line */}
+              <div style={{
+                position: 'absolute', right: 0, top: 0, bottom: 0, width: 3,
+                background: C.gold, borderRadius: '0 4px 4px 0',
+              }} />
+            </div>
+            <div className="font-mono" style={{ width: 24, fontSize: 10, fontWeight: 700, color: C.cream, textAlign: 'right' }}>
+              {positions[i]}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Last turn log */}
+      {log.length > 0 && (
+        <div style={{ marginBottom: 16, padding: '8px 10px', background: 'rgba(244,235,214,0.04)', borderRadius: 4 }}>
+          <div className="font-mono" style={{ fontSize: 8, color: C.gold, letterSpacing: '0.1em', marginBottom: 4 }}>
+            TURN {log[log.length - 1].turn} — SIZE {log[log.length - 1].size}
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {log[log.length - 1].entries.map((e, i) => {
+              const p = POWERS[e.idx];
+              return (
+                <div key={i} className="font-mono" style={{ fontSize: 9, color: e.moved ? C.emerald : e.eliminated ? C.crimson : 'rgba(244,235,214,0.4)' }}>
+                  {p.icon} {e.cost.toLocaleString()} steps {e.moved ? '✓' : e.eliminated ? '☠ ELIMINATED' : '✗ stuck'}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Controls */}
+      <div style={{ textAlign: 'center' }}>
+        {!gameOver ? (
+          <button onClick={advanceTurn} disabled={running} style={{
+            background: running ? 'rgba(244,235,214,0.1)' : C.gold, color: C.ink, border: 'none',
+            padding: '10px 28px', fontSize: 13, fontWeight: 700,
+            cursor: running ? 'wait' : 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            🎲 Roll Next Turn
+          </button>
+        ) : (
+          <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+            <div style={{ fontSize: 40, marginBottom: 4 }}>{POWERS[leader].icon}</div>
+            <div className="font-serif" style={{ fontSize: 22, fontWeight: 500, color: POWERS[leader].color, marginBottom: 4 }}>
+              {POWERS[leader].name} Wins the Race!
+            </div>
+            <div style={{
+              padding: '12px 14px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
+              borderLeft: `3px solid ${C.gold}`, textAlign: 'left', marginBottom: 12,
+              maxWidth: 480, margin: '0 auto 12px',
+            }}>
+              <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+                💡 Notice how ⚡ <strong style={{ color: C.teal }}>Instant</strong> and 🧠 <strong style={{ color: C.cobalt }}>Clever</strong> kept
+                moving every turn? Their work barely grows! But 💥 <strong style={{ color: C.crimson }}>Explosion</strong> got
+                eliminated — at size {sizes[Math.min(turn, sizes.length) - 1]}, it needed <strong style={{ color: C.crimson }}>
+                {POWERS[3].fn(sizes[Math.min(turn, sizes.length) - 1]).toLocaleString()}</strong> steps. Way too slow!
+              </div>
+            </div>
+            <button onClick={restart} style={{
+              background: C.cream, color: C.ink, border: 'none',
+              padding: '8px 24px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+            }}>
+              Race Again
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Game 3: Monster Match (Memory Card Game) ───
+const MonsterMatch = () => {
+  const pairs = [
+    { scenario: 'Grab the first cookie from a jar', pattern: 'instant', icon: '🍪' },
+    { scenario: 'Find your name in an alphabetized list by halving', pattern: 'clever', icon: '📋' },
+    { scenario: 'Read every page of a book', pattern: 'steady', icon: '📖' },
+    { scenario: 'Everyone high-fives everyone at a party', pattern: 'explosion', icon: '🎉' },
+    { scenario: 'Check if a number is even or odd', pattern: 'instant', icon: '🔢' },
+    { scenario: 'Search a phone book by opening to the middle', pattern: 'clever', icon: '📱' },
+    { scenario: 'Count all the red cars in a parking lot', pattern: 'steady', icon: '🚗' },
+    { scenario: 'Every team plays every other team', pattern: 'explosion', icon: '⚽' },
   ];
 
-  const [round, setRound] = useState(0);
-  const [score, setScore] = useState(0);
-  const [picked, setPicked] = useState(null);
-  const [streak, setStreak] = useState(0);
-
-  const current = challenges[round % challenges.length];
-  const gameOver = round >= challenges.length;
-
-  const choose = (answer) => {
-    setPicked(answer);
-    if (answer === current.answer) {
-      setScore(s => s + 1);
-      setStreak(s => s + 1);
-    } else {
-      setStreak(0);
-    }
-  };
-
-  const next = () => {
-    setRound(r => r + 1);
-    setPicked(null);
-  };
-
-  const patternMap = {
+  const patternInfo = {
     instant: { icon: '⚡', name: 'Instant', color: C.teal },
-    halving: { icon: '🧠', name: 'Clever', color: C.cobalt },
+    clever: { icon: '🧠', name: 'Clever', color: C.cobalt },
     steady: { icon: '🚶', name: 'Steady', color: C.emerald },
     explosion: { icon: '💥', name: 'Explosion', color: C.crimson },
   };
 
-  if (gameOver) {
-    const pct = Math.round((score / challenges.length) * 100);
+  const [cards, setCards] = useState(() => {
+    const deck = [];
+    pairs.forEach((p, i) => {
+      deck.push({ id: i * 2, type: 'scenario', pairIdx: i, text: p.scenario, icon: p.icon, pattern: p.pattern });
+      deck.push({ id: i * 2 + 1, type: 'pattern', pairIdx: i, text: patternInfo[p.pattern].name, icon: patternInfo[p.pattern].icon, pattern: p.pattern, color: patternInfo[p.pattern].color });
+    });
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  });
+
+  const [flipped, setFlipped] = useState([]);
+  const [matched, setMatched] = useState(new Set());
+  const [moves, setMoves] = useState(0);
+  const [checking, setChecking] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
+
+  const flipCard = (idx) => {
+    if (checking || flipped.includes(idx) || matched.has(cards[idx].id)) return;
+
+    const newFlipped = [...flipped, idx];
+    setFlipped(newFlipped);
+
+    if (newFlipped.length === 2) {
+      setMoves(m => m + 1);
+      setChecking(true);
+      const [a, b] = newFlipped;
+      const cardA = cards[a];
+      const cardB = cards[b];
+
+      // Match if one is scenario and one is pattern of same pair
+      const isMatch = cardA.type !== cardB.type && cardA.pairIdx === cardB.pairIdx;
+
+      setTimeout(() => {
+        if (isMatch) {
+          setMatched(prev => new Set([...prev, cardA.id, cardB.id]));
+          setLastResult({ match: true, scenario: pairs[cardA.pairIdx].scenario, pattern: patternInfo[cardA.pattern].name });
+        } else {
+          setLastResult({ match: false });
+        }
+        setFlipped([]);
+        setChecking(false);
+      }, 800);
+    }
+  };
+
+  const allMatched = matched.size === cards.length;
+
+  const restart = () => {
+    const deck = [...cards];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    setCards(deck);
+    setFlipped([]); setMatched(new Set()); setMoves(0); setChecking(false); setLastResult(null);
+  };
+
+  if (allMatched) {
+    const rating = moves <= 12 ? '🏆 Perfect Memory!' : moves <= 16 ? '⭐ Great Job!' : '💪 Well Done!';
     return (
       <div style={{ textAlign: 'center', animation: 'fadeUp 0.4s ease-out' }}>
-        <div style={{ fontSize: 48, marginBottom: 8 }}>
-          {pct >= 80 ? '🏆' : pct >= 60 ? '⭐' : '💪'}
+        <div style={{ fontSize: 48, marginBottom: 8 }}>{moves <= 12 ? '🏆' : moves <= 16 ? '⭐' : '💪'}</div>
+        <div className="font-serif" style={{ fontSize: 24, fontWeight: 500, color: C.cream, marginBottom: 4 }}>
+          All Matched!
         </div>
-        <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, marginBottom: 4 }}>
-          {score} / {challenges.length} correct!
+        <div className="font-mono" style={{ fontSize: 12, color: C.gold, marginBottom: 4 }}>{rating}</div>
+        <div className="font-mono" style={{ fontSize: 11, color: 'rgba(244,235,214,0.5)', marginBottom: 16 }}>
+          {moves} moves · {pairs.length} pairs
         </div>
-        <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.6)', marginBottom: 16 }}>
-          {pct >= 80 ? "You're a pattern-spotting pro! 🎓"
-           : pct >= 60 ? "Great instincts! You're getting the hang of it."
-           : "Keep playing — you'll start seeing these patterns everywhere!"}
+        <div style={{
+          padding: '14px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
+          borderLeft: `3px solid ${C.gold}`, textAlign: 'left', marginBottom: 16, maxWidth: 460, margin: '0 auto 16px',
+        }}>
+          <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+            💡 You just learned to recognize <strong style={{ color: C.gold }}>4 growth patterns</strong> in everyday life!
+            {' '}⚡ Instant things never change. 🧠 Clever things halve the problem.
+            {' '}🚶 Steady things grow with the size. 💥 Explosion things grow with <em>every pair</em>.
+          </div>
         </div>
-        <button onClick={() => { setRound(0); setScore(0); setPicked(null); setStreak(0); }} style={{
+        <button onClick={restart} style={{
           background: C.gold, color: C.ink, border: 'none',
-          padding: '10px 24px', fontSize: 12, fontWeight: 700,
+          padding: '10px 28px', fontSize: 13, fontWeight: 700,
           cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
         }}>
           Play Again
@@ -4561,93 +4550,280 @@ const PatternSpotter = () => {
 
   return (
     <div>
-      {/* Progress */}
-      <div style={{ display: 'flex', gap: 3, marginBottom: 16 }}>
-        {challenges.map((_, i) => (
-          <div key={i} style={{
-            flex: 1, height: 4, borderRadius: 2,
-            background: i < round ? C.gold : i === round ? C.emerald : 'rgba(244,235,214,0.1)',
-          }} />
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div className="font-mono" style={{ fontSize: 9, color: C.gold, letterSpacing: '0.15em' }}>
-          QUESTION {round + 1} OF {challenges.length}
+      {/* Stats */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="font-mono" style={{ fontSize: 10, color: C.gold }}>
+          Moves: <strong>{moves}</strong>
         </div>
-        <div className="font-mono" style={{ fontSize: 9, color: C.cream, letterSpacing: '0.15em' }}>
-          {score} correct {streak >= 3 && <span style={{ color: C.gold }}>🔥 {streak} streak!</span>}
+        <div className="font-mono" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)' }}>
+          {matched.size / 2} / {pairs.length} pairs
         </div>
       </div>
 
-      {/* Question */}
+      {/* Card grid */}
       <div style={{
-        padding: '16px 20px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
-        marginBottom: 16,
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 12,
       }}>
-        <div className="font-serif" style={{ fontSize: 18, fontWeight: 500, color: C.cream, lineHeight: 1.5 }}>
-          "{current.q}"
-        </div>
-      </div>
+        {cards.map((card, idx) => {
+          const isFlipped = flipped.includes(idx);
+          const isMatched = matched.has(card.id);
+          const showFace = isFlipped || isMatched;
 
-      {/* Pattern choices */}
-      <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
-        WHAT GROWTH PATTERN IS THIS?
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-        {Object.entries(patternMap).map(([key, p]) => {
-          const isCorrect = picked && key === current.answer;
-          const isWrong = picked === key && key !== current.answer;
           return (
-            <button key={key} onClick={() => !picked && choose(key)} disabled={!!picked} style={{
-              padding: '12px', borderRadius: 6, cursor: picked ? 'default' : 'pointer',
-              background: isCorrect ? 'rgba(46,125,91,0.3)' : isWrong ? 'rgba(168,50,43,0.3)' : 'rgba(244,235,214,0.06)',
-              border: isCorrect ? `2px solid ${C.emerald}` : isWrong ? `2px solid ${C.crimson}` : '2px solid rgba(244,235,214,0.1)',
-              textAlign: 'center',
+            <div key={card.id} onClick={() => flipCard(idx)} style={{
+              minHeight: 72, borderRadius: 6, cursor: showFace ? 'default' : 'pointer',
+              padding: '6px 4px', textAlign: 'center',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              background: isMatched ? `${(card.color || C.gold)}15`
+                : showFace ? 'rgba(244,235,214,0.08)' : 'rgba(244,235,214,0.04)',
+              border: isMatched ? `2px solid ${card.color || C.gold}40`
+                : showFace ? '1px solid rgba(244,235,214,0.2)' : '1px solid rgba(244,235,214,0.08)',
+              transition: 'all 0.2s ease',
+              opacity: isMatched ? 0.6 : 1,
             }}>
-              <div style={{ fontSize: 24, marginBottom: 4 }}>{p.icon}</div>
-              <div className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: p.color }}>{p.name}</div>
-            </button>
+              {showFace ? (
+                <>
+                  <div style={{ fontSize: 20, marginBottom: 2 }}>{card.icon}</div>
+                  <div className="font-mono" style={{
+                    fontSize: 7, fontWeight: 600, lineHeight: 1.3,
+                    color: card.type === 'pattern' ? card.color : 'rgba(244,235,214,0.7)',
+                  }}>
+                    {card.type === 'pattern' ? card.text : card.text}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 24, opacity: 0.2 }}>🃏</div>
+              )}
+            </div>
           );
         })}
       </div>
 
-      {/* Feedback */}
-      {picked && (
-        <div style={{ animation: 'fadeUp 0.3s ease-out' }}>
-          <div style={{
-            padding: '12px 14px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
-            borderLeft: `3px solid ${picked === current.answer ? C.emerald : C.crimson}`, marginBottom: 12,
-          }}>
-            <div className="font-sans" style={{ fontSize: 13, color: C.cream, lineHeight: 1.5 }}>
-              {picked === current.answer
-                ? <><strong style={{ color: C.emerald }}>✓ Correct!</strong> {current.hint}</>
-                : <><strong style={{ color: C.crimson }}>✗ Not quite.</strong> The answer is {patternMap[current.answer].icon} <strong style={{ color: patternMap[current.answer].color }}>{patternMap[current.answer].name}</strong> — {current.hint}</>
-              }
-            </div>
-          </div>
-          <button onClick={next} style={{
-            background: C.cream, color: C.ink, border: 'none',
-            padding: '8px 20px', fontSize: 12, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-          }}>
-            {round + 1 < challenges.length ? 'Next Question →' : 'See Results'}
-          </button>
+      {/* Last result */}
+      {lastResult && (
+        <div className="font-mono" style={{
+          fontSize: 10, textAlign: 'center', marginBottom: 4,
+          color: lastResult.match ? C.emerald : 'rgba(244,235,214,0.3)',
+        }}>
+          {lastResult.match ? `✓ Matched! "${lastResult.scenario}" → ${lastResult.pattern}` : 'Not a match — try again!'}
         </div>
       )}
     </div>
   );
 };
 
-// --- Complexity Quest Section ---
+// ─── Game 4: Tower Builder (Strategic Card Picking) ───
+const TowerBuilder = () => {
+  const totalFloors = 8;
+  const [floor, setFloor] = useState(1);
+  const [tower, setTower] = useState([]);
+  const [hand, setHand] = useState([]);
+  const [phase, setPhase] = useState('deal'); // deal | pick | done
+  const [totalBlocks, setTotalBlocks] = useState(0);
+
+  const dealHand = () => {
+    const h = [];
+    for (let i = 0; i < 3; i++) {
+      const p = POWERS[Math.floor(Math.random() * POWERS.length)];
+      const inputSize = floor * 4;
+      h.push({ ...p, blocks: Math.max(1, Math.round(100 / p.fn(inputSize))) });
+    }
+    setHand(h);
+    setPhase('pick');
+  };
+
+  const pickCard = (idx) => {
+    if (phase !== 'pick') return;
+    const card = hand[idx];
+    const inputSize = floor * 4;
+    const steps = card.fn(inputSize);
+    const blocks = Math.max(1, Math.round(100 / steps));
+    setTower(prev => [...prev, { floor, card, blocks, inputSize, steps }]);
+    setTotalBlocks(t => t + blocks);
+    if (floor >= totalFloors) {
+      setPhase('done');
+    } else {
+      setFloor(f => f + 1);
+      setPhase('deal');
+    }
+  };
+
+  const restart = () => {
+    setFloor(1); setTower([]); setHand([]); setPhase('deal'); setTotalBlocks(0);
+  };
+
+  const maxPossible = totalFloors * 100; // if you picked instant every time
+  const pct = Math.round((totalBlocks / maxPossible) * 100);
+
+  if (phase === 'done') {
+    return (
+      <div style={{ textAlign: 'center', animation: 'fadeUp 0.4s ease-out' }}>
+        <div style={{ fontSize: 48, marginBottom: 8 }}>
+          {pct >= 70 ? '🏰' : pct >= 40 ? '🏠' : '🛖'}
+        </div>
+        <div className="font-serif" style={{ fontSize: 24, fontWeight: 500, color: C.cream, marginBottom: 4 }}>
+          Tower Complete!
+        </div>
+        <div className="font-mono" style={{ fontSize: 14, color: C.gold, marginBottom: 4 }}>
+          {totalBlocks} blocks tall
+        </div>
+        <div className="font-mono" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)', marginBottom: 16 }}>
+          {pct >= 70 ? 'Castle! Amazing strategy!' : pct >= 40 ? 'Nice house! Can you build taller?' : 'A cozy hut. Try picking faster cards!'}
+        </div>
+
+        {/* Tower visualization */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 120, marginBottom: 16 }}>
+          {tower.map((t, i) => (
+            <div key={i} style={{
+              width: 28, background: t.card.color, borderRadius: '3px 3px 0 0',
+              height: `${Math.max(8, (t.blocks / 100) * 110)}px`,
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              paddingBottom: 2, opacity: 0.8,
+            }}>
+              <div style={{ fontSize: 12 }}>{t.card.icon}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          padding: '14px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
+          borderLeft: `3px solid ${C.gold}`, textAlign: 'left', marginBottom: 16, maxWidth: 460, margin: '0 auto 16px',
+        }}>
+          <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+            💡 <strong style={{ color: C.gold }}>Strategy:</strong> As the floor number grows, the task gets bigger.
+            {' '}⚡ <strong style={{ color: C.teal }}>Instant</strong> cards always give 100 blocks — they don't slow down!
+            {' '}But 💥 <strong style={{ color: C.crimson }}>Explosion</strong> cards give fewer and fewer blocks on higher floors
+            because they take too many steps on big inputs.
+          </div>
+        </div>
+
+        <button onClick={restart} style={{
+          background: C.gold, color: C.ink, border: 'none',
+          padding: '10px 28px', fontSize: 13, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+        }}>
+          Build Again
+        </button>
+      </div>
+    );
+  }
+
+  const inputSize = floor * 4;
+
+  return (
+    <div>
+      {/* Progress */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="font-mono" style={{ fontSize: 9, color: C.gold, letterSpacing: '0.12em' }}>
+          FLOOR {floor} OF {totalFloors}
+        </div>
+        <div className="font-mono" style={{ fontSize: 9, color: C.cream }}>
+          {totalBlocks} blocks
+        </div>
+      </div>
+
+      {/* Floor progress bar */}
+      <div style={{ display: 'flex', gap: 3, marginBottom: 16 }}>
+        {Array.from({ length: totalFloors }).map((_, i) => (
+          <div key={i} style={{
+            flex: 1, height: 6, borderRadius: 3,
+            background: i < floor - 1 ? (tower[i] ? tower[i].card.color : C.gold) : i === floor - 1 ? C.cream : 'rgba(244,235,214,0.1)',
+            opacity: i < floor - 1 ? 0.6 : 1,
+          }} />
+        ))}
+      </div>
+
+      {/* Tower so far */}
+      {tower.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 60, marginBottom: 12 }}>
+          {tower.map((t, i) => (
+            <div key={i} style={{
+              width: 24, background: t.card.color, borderRadius: '3px 3px 0 0',
+              height: `${Math.max(6, (t.blocks / 100) * 55)}px`,
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              paddingBottom: 1, opacity: 0.7,
+            }}>
+              <div style={{ fontSize: 10 }}>{t.card.icon}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Input size display */}
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '8px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
+          border: '1px solid rgba(244,235,214,0.1)',
+        }}>
+          <div className="font-mono" style={{ fontSize: 9, color: 'rgba(244,235,214,0.5)' }}>Task size this floor:</div>
+          <div className="font-mono" style={{ fontSize: 16, fontWeight: 700, color: C.gold }}>{inputSize}</div>
+        </div>
+      </div>
+
+      {/* Deal or pick */}
+      {phase === 'deal' ? (
+        <div style={{ textAlign: 'center' }}>
+          <button onClick={dealHand} style={{
+            background: C.gold, color: C.ink, border: 'none',
+            padding: '10px 28px', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            🃏 Deal 3 Cards
+          </button>
+        </div>
+      ) : (
+        <div>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 8, textAlign: 'center' }}>
+            PICK A CARD — MORE BLOCKS = BETTER!
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            {hand.map((card, idx) => {
+              const steps = card.fn(inputSize);
+              const blocks = Math.max(1, Math.round(100 / steps));
+              return (
+                <div key={idx} onClick={() => pickCard(idx)} style={{
+                  width: 100, borderRadius: 8, cursor: 'pointer',
+                  background: `linear-gradient(135deg, ${card.color}18 0%, ${card.color}08 100%)`,
+                  border: `1px solid ${card.color}40`,
+                  padding: '12px 8px', textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                }}>
+                  <div style={{ fontSize: 28, marginBottom: 4 }}>{card.icon}</div>
+                  <div className="font-mono" style={{ fontSize: 10, fontWeight: 700, color: card.color }}>{card.name}</div>
+                  <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', marginBottom: 6 }}>
+                    {steps.toLocaleString()} steps
+                  </div>
+                  <div style={{
+                    padding: '4px 0', background: `${card.color}20`, borderRadius: 3,
+                  }}>
+                    <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: card.color }}>
+                      +{blocks}
+                    </div>
+                    <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.4)' }}>blocks</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', textAlign: 'center', marginTop: 8 }}>
+            Faster strategies = more blocks. Task size grows each floor!
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Complexity Quest Wrapper ───
 const ComplexityQuest = React.forwardRef((props, ref) => {
-  const [activeGame, setActiveGame] = useState('handshake');
+  const [activeGame, setActiveGame] = useState('battle');
 
   const games = [
-    { key: 'handshake', icon: '🤝', name: 'Handshake Party', desc: 'Why do handshakes explode at big parties?' },
-    { key: 'guessing', icon: '🔍', name: 'Guessing Game', desc: 'Find the secret number — clever vs random' },
-    { key: 'growth', icon: '📊', name: 'Growth Lab', desc: 'See how different patterns grow with size' },
-    { key: 'spotter', icon: '🎯', name: 'Pattern Spotter', desc: 'Match real-world tasks to their growth pattern' },
+    { key: 'battle', icon: '⚔️', name: 'Speed Battle', desc: 'Card war — play power cards to beat the computer!' },
+    { key: 'race', icon: '🏁', name: 'The Great Race', desc: 'Watch 4 runners compete as tasks get bigger' },
+    { key: 'match', icon: '🃏', name: 'Monster Match', desc: 'Flip cards and match scenarios to growth patterns' },
+    { key: 'tower', icon: '🏗️', name: 'Tower Builder', desc: 'Pick the best cards to build the tallest tower' },
   ];
 
   return (
@@ -4662,8 +4838,7 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
             fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
             maxWidth: 560, margin: '20px auto 0', lineHeight: 1.5,
           }}>
-            Some tasks barely change when things get bigger. Others explode!
-            Discover the four growth patterns that rule all of computing.
+            Four card & board games that teach the secret patterns behind every algorithm.
           </p>
         </div>
 
@@ -4671,25 +4846,20 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
         <div style={{
           display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 32, flexWrap: 'wrap',
         }}>
-          {[
-            { icon: '⚡', name: 'Instant', color: C.teal, desc: 'Same work, no matter how big', formula: 'Always 1 step' },
-            { icon: '🧠', name: 'Clever', color: C.cobalt, desc: 'Halves the problem each time', formula: 'Doubles = +1 step' },
-            { icon: '🚶', name: 'Steady', color: C.emerald, desc: 'Grows step-by-step', formula: '10× bigger = 10× work' },
-            { icon: '💥', name: 'Explosion', color: C.crimson, desc: 'Everyone meets everyone', formula: '10× bigger = 100× work!' },
-          ].map(t => (
-            <div key={t.name} style={{
+          {POWERS.map(t => (
+            <div key={t.id} style={{
               padding: '12px 14px', background: 'rgba(244,235,214,0.04)', borderRadius: 6,
-              border: `1px solid rgba(244,235,214,0.08)`, textAlign: 'center', minWidth: 140, flex: '1 1 140px', maxWidth: 200,
+              border: `1px solid rgba(244,235,214,0.08)`, textAlign: 'center', minWidth: 130, flex: '1 1 130px', maxWidth: 190,
             }}>
               <div style={{ fontSize: 28, marginBottom: 4 }}>{t.icon}</div>
               <div className="font-mono" style={{ fontSize: 11, color: t.color, fontWeight: 700, letterSpacing: '0.1em' }}>
                 {t.name.toUpperCase()}
               </div>
-              <div className="font-sans" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)', marginTop: 2 }}>
-                {t.desc}
-              </div>
-              <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', marginTop: 4 }}>
+              <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)', marginTop: 2 }}>
                 {t.formula}
+              </div>
+              <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.25)', marginTop: 2 }}>
+                {t.tier}
               </div>
             </div>
           ))}
@@ -4721,10 +4891,10 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
             {games.find(g => g.key === activeGame)?.desc}
           </div>
 
-          {activeGame === 'handshake' && <HandshakeGame />}
-          {activeGame === 'guessing' && <GuessingGame />}
-          {activeGame === 'growth' && <GrowthLab />}
-          {activeGame === 'spotter' && <PatternSpotter />}
+          {activeGame === 'battle' && <SpeedBattle />}
+          {activeGame === 'race' && <TheGreatRace />}
+          {activeGame === 'match' && <MonsterMatch />}
+          {activeGame === 'tower' && <TowerBuilder />}
         </div>
       </div>
     </section>
