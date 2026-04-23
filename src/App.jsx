@@ -4515,6 +4515,306 @@ const DoublingDare = () => {
 };
 
 // --- Complexity Quest Section ---
+// --- Mini-Game 4: Speed Run Card Game ---
+const SpeedRunGame = () => {
+  const HAND_SIZE = 5;
+  const TASKS_COUNT = 5;
+
+  const shuffle = (arr) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  const dealHand = () => {
+    const pool = [];
+    ALGO_DATA.forEach(a => { pool.push(a.key); pool.push(a.key); });
+    return shuffle(pool).slice(0, HAND_SIZE);
+  };
+
+  const dealTasks = () => {
+    const sizes = [4, 8, 8, 16, 16, 32, 32, 64];
+    return shuffle(sizes).slice(0, TASKS_COUNT).sort((a, b) => a - b);
+  };
+
+  const [hand, setHand] = useState(() => dealHand());
+  const [tasks, setTasks] = useState(() => dealTasks());
+  const [assignments, setAssignments] = useState({}); // taskIdx -> algoKey
+  const [selectedCard, setSelectedCard] = useState(null); // hand index
+  const [usedCards, setUsedCards] = useState(new Set());
+  const [submitted, setSubmitted] = useState(false);
+
+  const playCard = (taskIdx) => {
+    if (selectedCard === null || submitted) return;
+    if (assignments[taskIdx] !== undefined) return; // already assigned
+
+    const algoKey = hand[selectedCard];
+    setAssignments(prev => ({ ...prev, [taskIdx]: algoKey }));
+    setUsedCards(prev => { const s = new Set(prev); s.add(selectedCard); return s; });
+    setSelectedCard(null);
+  };
+
+  const undoTask = (taskIdx) => {
+    if (submitted) return;
+    const algoKey = assignments[taskIdx];
+    if (algoKey === undefined) return;
+    // Find which hand card was used
+    const cardIdx = [...usedCards].find(i => hand[i] === algoKey && !(
+      Object.entries(assignments).some(([ti, ak]) => parseInt(ti) !== taskIdx && ak === algoKey && [...usedCards].some(j => j !== i && hand[j] === ak))
+    ));
+    setAssignments(prev => { const n = { ...prev }; delete n[taskIdx]; return n; });
+    if (cardIdx !== undefined) {
+      setUsedCards(prev => { const s = new Set(prev); s.delete(cardIdx); return s; });
+    }
+  };
+
+  const allAssigned = Object.keys(assignments).length === TASKS_COUNT;
+
+  const getSteps = (algoKey, n) => {
+    const a = ALGO_DATA.find(d => d.key === algoKey);
+    return a ? a.fn(n) : 0;
+  };
+
+  const playerTotal = Object.entries(assignments).reduce((sum, [ti, ak]) => sum + getSteps(ak, tasks[parseInt(ti)]), 0);
+
+  // Compute optimal: try all permutations of hand cards assigned to tasks
+  const computeOptimal = () => {
+    // For each task, find best available algo from full ALGO_DATA
+    return tasks.reduce((sum, n) => {
+      const best = Math.min(...ALGO_DATA.map(a => a.fn(n)));
+      return sum + best;
+    }, 0);
+  };
+  const optimalTotal = computeOptimal();
+
+  // Compute best possible with THIS hand
+  const computeBestWithHand = () => {
+    // Greedy: assign fastest card to biggest pile
+    const available = [...hand];
+    const tasksSorted = tasks.map((n, i) => ({ n, i })).sort((a, b) => b.n - a.n);
+    let total = 0;
+    const used = new Set();
+    tasksSorted.forEach(({ n }) => {
+      let bestSteps = Infinity, bestIdx = -1;
+      available.forEach((ak, idx) => {
+        if (used.has(idx)) return;
+        const s = getSteps(ak, n);
+        if (s < bestSteps) { bestSteps = s; bestIdx = idx; }
+      });
+      if (bestIdx >= 0) { total += bestSteps; used.add(bestIdx); }
+    });
+    return total;
+  };
+  const bestWithHand = computeBestWithHand();
+
+  const reset = () => {
+    setHand(dealHand());
+    setTasks(dealTasks());
+    setAssignments({});
+    setSelectedCard(null);
+    setUsedCards(new Set());
+    setSubmitted(false);
+  };
+
+  const submit = () => setSubmitted(true);
+
+  const efficiency = bestWithHand > 0 ? Math.round((bestWithHand / playerTotal) * 100) : 100;
+
+  return (
+    <div>
+      {!submitted ? (
+        <>
+          {/* Instruction */}
+          <div className="font-sans" style={{ fontSize: 12, color: 'rgba(244,235,214,0.6)', marginBottom: 16, textAlign: 'center', lineHeight: 1.5 }}>
+            Tap a card from your hand, then tap a task pile to assign it.
+            Match <strong style={{ color: C.cream }}>fast 🐇 algorithms to big piles</strong> for fewer total steps!
+          </div>
+
+          {/* Task piles */}
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 6, fontWeight: 600 }}>
+            TASK PILES — TAP TO ASSIGN
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {tasks.map((n, i) => {
+              const assigned = assignments[i];
+              const assignedAlgo = assigned ? ALGO_DATA.find(a => a.key === assigned) : null;
+              const steps = assigned ? getSteps(assigned, n) : null;
+              return (
+                <div key={i} onClick={() => assigned ? undoTask(i) : playCard(i)} style={{
+                  width: 90, minHeight: 100, padding: '10px 8px',
+                  background: assigned ? 'rgba(244,235,214,0.08)' : selectedCard !== null ? 'rgba(201,162,39,0.1)' : 'rgba(244,235,214,0.03)',
+                  border: assigned ? `2px solid ${assignedAlgo.tierColor}` : selectedCard !== null ? `2px dashed ${C.gold}` : '2px solid rgba(244,235,214,0.08)',
+                  borderRadius: 6, cursor: assigned ? 'pointer' : selectedCard !== null ? 'pointer' : 'default',
+                  textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4,
+                  transition: 'all 0.2s ease',
+                }}>
+                  <div className="font-serif" style={{ fontSize: 24, fontWeight: 700, color: C.cream }}>{n}</div>
+                  <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.4)' }}>cards</div>
+                  {assigned ? (
+                    <>
+                      <div style={{ fontSize: 16 }}>{assignedAlgo.icon}</div>
+                      <div className="font-mono" style={{ fontSize: 8, color: assignedAlgo.tierColor, fontWeight: 600 }}>
+                        {assignedAlgo.name.split(' ')[0]}
+                      </div>
+                      <div className="font-mono" style={{ fontSize: 10, color: C.cream, fontWeight: 700 }}>
+                        {steps} steps
+                      </div>
+                      <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.3)' }}>tap to undo</div>
+                    </>
+                  ) : (
+                    <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)' }}>
+                      {selectedCard !== null ? 'tap here' : 'empty'}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Hand */}
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 6, fontWeight: 600 }}>
+            YOUR HAND — TAP TO SELECT
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {hand.map((ak, i) => {
+              const algo = ALGO_DATA.find(a => a.key === ak);
+              const used = usedCards.has(i);
+              const selected = selectedCard === i;
+              return (
+                <button key={i} onClick={() => !used && setSelectedCard(selected ? null : i)} disabled={used} style={{
+                  width: 72, padding: '8px 4px',
+                  background: used ? 'rgba(244,235,214,0.02)' : selected ? algo.tierColor : 'rgba(244,235,214,0.06)',
+                  border: selected ? `2px solid ${C.cream}` : '2px solid transparent',
+                  borderRadius: 6, cursor: used ? 'default' : 'pointer',
+                  opacity: used ? 0.25 : 1, textAlign: 'center',
+                  transition: 'all 0.15s ease',
+                }}>
+                  <div style={{ fontSize: 18 }}>{algo.icon}</div>
+                  <div className="font-mono" style={{
+                    fontSize: 8, fontWeight: 700, marginTop: 2,
+                    color: selected ? (algo.tierColor === C.gold ? C.ink : C.cream) : algo.tierColor,
+                  }}>
+                    {algo.name.split(' ')[0]}
+                  </div>
+                  <div className="font-mono" style={{
+                    fontSize: 7, marginTop: 1,
+                    color: selected ? 'rgba(0,0,0,0.5)' : 'rgba(244,235,214,0.3)',
+                  }}>
+                    {algo.tier}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Running total + submit */}
+          <div style={{ textAlign: 'center' }}>
+            {Object.keys(assignments).length > 0 && (
+              <div className="font-mono" style={{ fontSize: 11, color: C.cream, marginBottom: 8 }}>
+                Current total: <strong style={{ color: C.gold }}>{playerTotal} steps</strong>
+                {' · '}{TASKS_COUNT - Object.keys(assignments).length} piles remaining
+              </div>
+            )}
+            {allAssigned && (
+              <button onClick={submit} style={{
+                background: C.gold, color: C.ink, border: 'none',
+                padding: '12px 28px', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+              }}>
+                ⚡ Submit Strategy
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        // Results
+        <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div style={{ fontSize: 44, marginBottom: 8 }}>
+              {efficiency >= 100 ? '🏆' : efficiency >= 90 ? '⭐' : efficiency >= 70 ? '👍' : '💪'}
+            </div>
+            <div className="font-serif" style={{ fontSize: 32, fontWeight: 500 }}>
+              {efficiency >= 100 ? 'Perfect Strategy!' : efficiency >= 90 ? 'Great Instincts!' : efficiency >= 70 ? 'Good Thinking!' : 'Keep Learning!'}
+            </div>
+            <div className="font-mono" style={{ fontSize: 12, color: 'rgba(244,235,214,0.6)', marginTop: 4 }}>
+              {efficiency}% efficiency with your hand
+            </div>
+          </div>
+
+          {/* Breakdown table */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr 80px 80px', gap: '6px 10px', alignItems: 'center' }}>
+              <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)' }}>PILE</div>
+              <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)' }}>YOUR PICK</div>
+              <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)', textAlign: 'right' }}>YOUR STEPS</div>
+              <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)', textAlign: 'right' }}>BEST POSSIBLE</div>
+
+              {tasks.map((n, i) => {
+                const ak = assignments[i];
+                const algo = ALGO_DATA.find(a => a.key === ak);
+                const yourSteps = getSteps(ak, n);
+                const bestSteps = Math.min(...ALGO_DATA.map(a => a.fn(n)));
+                const isOptimal = yourSteps === bestSteps;
+                return (
+                  <React.Fragment key={i}>
+                    <div className="font-serif" style={{ fontSize: 16, fontWeight: 600 }}>{n}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 14 }}>{algo.icon}</span>
+                      <span className="font-mono" style={{ fontSize: 10, color: algo.tierColor, fontWeight: 600 }}>{algo.name.split(' ')[0]}</span>
+                      {isOptimal && <span style={{ fontSize: 10 }}>✅</span>}
+                    </div>
+                    <div className="font-mono" style={{ fontSize: 11, fontWeight: 600, textAlign: 'right', color: isOptimal ? C.emerald : C.cream }}>
+                      {yourSteps}
+                    </div>
+                    <div className="font-mono" style={{ fontSize: 11, textAlign: 'right', color: 'rgba(244,235,214,0.4)' }}>
+                      {bestSteps}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+
+              {/* Totals */}
+              <div className="font-mono" style={{ fontSize: 9, fontWeight: 700, color: C.gold, borderTop: '1px solid rgba(244,235,214,0.1)', paddingTop: 6 }}>TOTAL</div>
+              <div style={{ borderTop: '1px solid rgba(244,235,214,0.1)', paddingTop: 6 }} />
+              <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: C.cream, borderTop: '1px solid rgba(244,235,214,0.1)', paddingTop: 6 }}>
+                {playerTotal}
+              </div>
+              <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: 'rgba(244,235,214,0.4)', borderTop: '1px solid rgba(244,235,214,0.1)', paddingTop: 6 }}>
+                {optimalTotal}
+              </div>
+            </div>
+          </div>
+
+          {/* Insight */}
+          <div style={{
+            padding: '14px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
+            borderLeft: `3px solid ${C.gold}`, marginBottom: 16,
+          }}>
+            <div className="font-sans" style={{ fontSize: 13, color: C.cream, lineHeight: 1.6 }}>
+              💡 <strong>The key insight:</strong> It barely matters which algorithm you use on small piles (4-8 cards).
+              {' '}But on big piles (32-64 cards), picking a 🐇 Fast over a 🐢 Slow algorithm saves <em>hundreds</em> of steps!
+              {' '}<strong style={{ color: C.gold }}>This is why time complexity matters — it's about what happens when things get BIG.</strong>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <button onClick={reset} style={{
+              background: C.gold, color: C.ink, border: 'none',
+              padding: '10px 24px', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+            }}>
+              Deal New Hand
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ComplexityQuest = React.forwardRef((props, ref) => {
   const [activeGame, setActiveGame] = useState('race');
 
@@ -4522,6 +4822,7 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
     { key: 'race', icon: '🏁', name: 'The Race', desc: 'Watch algorithms race head-to-head' },
     { key: 'predict', icon: '🎯', name: 'Predict & Play', desc: 'Guess how many steps — build intuition' },
     { key: 'doubling', icon: '📦', name: 'Doubling Dare', desc: 'See what happens when you double the cards' },
+    { key: 'speedrun', icon: '🃏', name: 'Speed Run', desc: 'Play algorithm cards on task piles — minimize total steps!' },
   ];
 
   return (
@@ -4598,6 +4899,7 @@ const ComplexityQuest = React.forwardRef((props, ref) => {
           {activeGame === 'race' && <RaceGame />}
           {activeGame === 'predict' && <PredictGame />}
           {activeGame === 'doubling' && <DoublingDare />}
+          {activeGame === 'speedrun' && <SpeedRunGame />}
         </div>
       </div>
     </section>
