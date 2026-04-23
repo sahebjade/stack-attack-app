@@ -4002,494 +4002,613 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
 });
 
 // ============================================================================
-// COMPLEXITY QUEST — The Lunchbox Race (A Board Game)
+// COMPLEXITY QUEST — The Sorting Showdown
 // ============================================================================
 
-// Keep ALGO_DATA for sorting game scoreboard references
 const ALGO_DATA = [
-  { key: 'bubble', name: 'Bubble Sort', icon: '🐢', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 2), desc: 'Checks every pair — lots of work!' },
-  { key: 'selection', name: 'Selection Sort', icon: '🐢', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 2), desc: 'Scans for the smallest each time.' },
-  { key: 'insertion', name: 'Insertion Sort', icon: '🐢', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 4), desc: 'Shifts cards into place one by one.' },
-  { key: 'merge', name: 'Merge Sort', icon: '🐇', tier: 'Fast', tierColor: C.emerald, fn: n => Math.round(n * Math.log2(n)), desc: 'Splits in half, merges smartly.' },
-  { key: 'quick', name: 'Quick Sort', icon: '🐇', tier: 'Fast', tierColor: C.crimson, fn: n => Math.round(n * Math.log2(n)), desc: 'Picks a pivot, divides & conquers.' },
-  { key: 'heap', name: 'Heap Sort', icon: '🐇', tier: 'Fast', tierColor: C.slate, fn: n => Math.round(n * Math.log2(n)), desc: 'Builds a heap, extracts the max.' },
-  { key: 'radix', name: 'Radix Sort', icon: '⚡', tier: 'Lightning', tierColor: C.teal, fn: n => n * 2, desc: 'Sorts by digit — no comparisons!' },
+  { key: 'bubble', name: 'Bubble Sort', icon: '🫧', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 2), desc: 'Compares every neighbour pair' },
+  { key: 'selection', name: 'Selection Sort', icon: '👆', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 2), desc: 'Finds the minimum each pass' },
+  { key: 'insertion', name: 'Insertion Sort', icon: '🫳', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 4), desc: 'Inserts each card in place' },
+  { key: 'merge', name: 'Merge Sort', icon: '✂️', tier: 'Fast', tierColor: C.emerald, fn: n => Math.round(n * Math.log2(n)), desc: 'Splits in half, merges smart' },
+  { key: 'quick', name: 'Quick Sort', icon: '⚡', tier: 'Fast', tierColor: C.crimson, fn: n => Math.round(n * Math.log2(n)), desc: 'Picks a pivot, divides' },
+  { key: 'heap', name: 'Heap Sort', icon: '🏔️', tier: 'Fast', tierColor: C.slate, fn: n => Math.round(n * Math.log2(n)), desc: 'Builds a heap, extracts max' },
+  { key: 'radix', name: 'Radix Sort', icon: '🔢', tier: 'Lightning', tierColor: C.teal, fn: n => n * 2, desc: 'Sorts by digit, no comparisons' },
 ];
 
-// The four friends
-const FRIENDS = [
-  {
-    id: 'liz', icon: '⚡', name: 'Label Liz', color: C.teal,
-    strategy: 'Grabs the labeled box on top',
-    searchFn: () => 1,
-    thought: n => "My box has a big sticker — found it!",
-  },
-  {
-    id: 'sam', icon: '🧠', name: 'Smart Sam', color: C.cobalt,
-    strategy: 'Checks the middle, then left or right',
-    searchFn: n => Math.max(1, Math.ceil(Math.log2(n))),
-    thought: n => n <= 4 ? "Middle... got it!" : `Middle → half → ${n > 16 ? 'half → ' : ''}found!`,
-  },
-  {
-    id: 'will', icon: '🚶', name: 'Walker Will', color: C.emerald,
-    strategy: 'Checks each box one by one',
-    searchFn: n => Math.round(n * 0.5),
-    thought: n => n <= 8 ? "1, 2, 3... here it is!" : `Checked ${Math.round(n * 0.5)} boxes...`,
-  },
-  {
-    id: 'charlie', icon: '💥', name: 'Checker Charlie', color: C.crimson,
-    strategy: 'Compares every box with every other box',
-    searchFn: n => Math.round(n * n / 4),
-    thought: n => n <= 8 ? "Is this one? No... compare again..." : `${Math.round(n * n / 4)} comparisons! So tired...`,
-  },
-];
-
-const DAYS = [
-  { day: 1, boxes: 4, event: 'First day of school!' },
-  { day: 2, boxes: 8, event: 'More kids joined!' },
-  { day: 3, boxes: 16, event: 'The whole grade is here!' },
-  { day: 4, boxes: 32, event: "It's a big school now!" },
-  { day: 5, boxes: 64, event: 'Field trip — extra lunches!' },
-  { day: 6, boxes: 128, event: 'THE MEGA LUNCH DAY! 🎉' },
-];
-
-const TRACK_SPACES = 12;
-
-const LunchboxRace = () => {
-  const [day, setDay] = useState(-1);          // -1 = intro
-  const [positions, setPositions] = useState([0, 0, 0, 0]);
-  const [searching, setSearching] = useState(false);
-  const [searchProgress, setSearchProgress] = useState([0, 0, 0, 0]);
-  const [dayResults, setDayResults] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [phase, setPhase] = useState('intro');  // intro | ready | searching | result | done
+// ─── Duel Mode ───
+const DuelMode = () => {
+  const [leftKey, setLeftKey] = useState('bubble');
+  const [rightKey, setRightKey] = useState('merge');
+  const [deckSize, setDeckSize] = useState(8);
+  const [racing, setRacing] = useState(false);
+  const [leftSteps, setLeftSteps] = useState(0);
+  const [rightSteps, setRightSteps] = useState(0);
+  const [finished, setFinished] = useState(false);
   const timerRef = useRef(null);
 
-  const startGame = () => {
-    setDay(0);
-    setPositions([0, 0, 0, 0]);
-    setHistory([]);
-    setPhase('ready');
-    setDayResults(null);
-  };
+  const left = ALGO_DATA.find(a => a.key === leftKey);
+  const right = ALGO_DATA.find(a => a.key === rightKey);
+  const leftTotal = left.fn(deckSize);
+  const rightTotal = right.fn(deckSize);
 
-  const playDay = () => {
-    const d = DAYS[day];
-    setPhase('searching');
-    setSearchProgress([0, 0, 0, 0]);
+  const startRace = () => {
+    setRacing(true);
+    setLeftSteps(0);
+    setRightSteps(0);
+    setFinished(false);
 
-    const checks = FRIENDS.map(f => f.searchFn(d.boxes));
-    const maxChecks = Math.max(...checks);
+    const maxTotal = Math.max(leftTotal, rightTotal);
+    const ticks = 30;
+    let t = 0;
 
-    // Animate the search
-    let tick = 0;
-    const totalTicks = 20;
     timerRef.current = setInterval(() => {
-      tick++;
-      const progress = FRIENDS.map((_, i) => {
-        const ratio = checks[i] / maxChecks;
-        const finishTick = Math.max(2, Math.round(ratio * totalTicks));
-        return tick >= finishTick ? 1 : Math.min(tick / finishTick, 0.95);
-      });
-      setSearchProgress(progress);
+      t++;
+      setLeftSteps(Math.min(Math.round((t / ticks) * leftTotal * (maxTotal / leftTotal)), leftTotal));
+      setRightSteps(Math.min(Math.round((t / ticks) * rightTotal * (maxTotal / rightTotal)), rightTotal));
 
-      if (tick >= totalTicks) {
+      if (t >= ticks) {
         clearInterval(timerRef.current);
-        // Calculate moves: fewer checks = more spaces moved
-        const moves = checks.map(c => {
-          if (c <= 1) return 3;
-          if (c <= d.boxes * 0.1) return 2;
-          if (c <= d.boxes) return 1;
-          return 0;
-        });
-
-        const newPos = positions.map((p, i) => Math.min(p + moves[i], TRACK_SPACES));
-        setPositions(newPos);
-        setDayResults({ checks, moves, boxes: d.boxes });
-        setHistory(prev => [...prev, { day: d.day, boxes: d.boxes, checks, moves }]);
-        setPhase('result');
+        setLeftSteps(leftTotal);
+        setRightSteps(rightTotal);
+        setRacing(false);
+        setFinished(true);
       }
-    }, 80);
+    }, 60);
   };
 
-  const nextDay = () => {
-    setDayResults(null);
-    setSearchProgress([0, 0, 0, 0]);
-    if (day + 1 >= DAYS.length || positions.some(p => p >= TRACK_SPACES)) {
-      setPhase('done');
-    } else {
-      setDay(d => d + 1);
-      setPhase('ready');
-    }
-  };
-
-  const restart = () => {
+  const reset = () => {
     clearInterval(timerRef.current);
-    setDay(-1);
-    setPositions([0, 0, 0, 0]);
-    setSearching(false);
-    setSearchProgress([0, 0, 0, 0]);
-    setDayResults(null);
-    setHistory([]);
-    setPhase('intro');
+    setRacing(false);
+    setFinished(false);
+    setLeftSteps(0);
+    setRightSteps(0);
   };
 
-  const winner = positions.reduce((best, pos, i) => pos > positions[best] ? i : best, 0);
-
-  // ── INTRO SCREEN ──
-  if (phase === 'intro') {
-    return (
-      <div>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 64, marginBottom: 8 }}>🍱</div>
-          <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, color: C.cream, lineHeight: 1.3 }}>
-            The Lunchbox Race
-          </div>
-          <p className="font-sans" style={{ fontSize: 14, color: 'rgba(244,235,214,0.6)', marginTop: 8, lineHeight: 1.6, maxWidth: 420, margin: '8px auto 0' }}>
-            It's lunchtime! Four friends need to find their lunchbox every day.
-            But the pile keeps growing... Who will find theirs fastest?
-          </p>
-        </div>
-
-        {/* Meet the friends */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28, maxWidth: 420, margin: '0 auto 28px' }}>
-          {FRIENDS.map(f => (
-            <div key={f.id} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '12px 16px', background: 'rgba(244,235,214,0.04)', borderRadius: 8,
-              border: `1px solid ${f.color}20`,
-            }}>
-              <div style={{ fontSize: 32, lineHeight: 1 }}>{f.icon}</div>
-              <div>
-                <div className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: f.color }}>{f.name}</div>
-                <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.5)' }}>{f.strategy}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ textAlign: 'center' }}>
-          <button onClick={startGame} style={{
-            background: C.gold, color: C.ink, border: 'none',
-            padding: '14px 36px', fontSize: 16, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 6,
-            boxShadow: `0 4px 20px ${C.gold}30`,
-          }}>
-            🎲 Start the Race!
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── GAME OVER SCREEN ──
-  if (phase === 'done') {
-    const f = FRIENDS[winner];
-    return (
-      <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 64, marginBottom: 4 }}>🏆</div>
-          <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, color: f.color }}>
-            {f.name} wins!
-          </div>
-          <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.5)', marginTop: 4 }}>
-            {f.icon} {f.strategy} — that's why {f.id === 'liz' ? 'she' : 'he'} was fastest!
-          </div>
-        </div>
-
-        {/* Final race board mini */}
-        <div style={{ marginBottom: 20 }}>
-          {FRIENDS.map((fr, i) => (
-            <div key={fr.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <div style={{ width: 20, fontSize: 16, textAlign: 'center' }}>{fr.icon}</div>
-              <div style={{
-                flex: 1, height: 16, background: 'rgba(244,235,214,0.04)', borderRadius: 3,
-                position: 'relative', overflow: 'hidden',
-              }}>
-                <div style={{
-                  height: '100%', width: `${(positions[i] / TRACK_SPACES) * 100}%`,
-                  background: fr.color, borderRadius: 3, opacity: 0.5,
-                }} />
-                <div style={{
-                  position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-                  fontSize: 8, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, color: C.cream,
-                }}>
-                  {positions[i]}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* The big reveal */}
-        <div style={{
-          padding: '20px', background: 'rgba(244,235,214,0.05)', borderRadius: 8,
-          border: '1px solid rgba(244,235,214,0.1)', marginBottom: 20,
-        }}>
-          <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, marginBottom: 12, fontWeight: 600 }}>
-            WHAT YOU JUST DISCOVERED
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {FRIENDS.map(f => {
-              const last = history[history.length - 1];
-              const first = history[0];
-              return (
-                <div key={f.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}>{f.icon}</div>
-                  <div>
-                    <div className="font-mono" style={{ fontSize: 10, fontWeight: 700, color: f.color }}>{f.name}</div>
-                    <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.6)', lineHeight: 1.5 }}>
-                      {f.id === 'liz' && <>On Day 1 ({first.boxes} boxes): <strong style={{color:C.cream}}>1 look</strong>. On the last day ({last.boxes} boxes): still just <strong style={{color:C.cream}}>1 look</strong>! Never slows down.</>}
-                      {f.id === 'sam' && <>On Day 1: <strong style={{color:C.cream}}>{f.searchFn(first.boxes)} looks</strong>. On the last day ({last.boxes} boxes): only <strong style={{color:C.cream}}>{f.searchFn(last.boxes)} looks</strong>! Halving is powerful.</>}
-                      {f.id === 'will' && <>On Day 1: <strong style={{color:C.cream}}>{f.searchFn(first.boxes)} looks</strong>. On the last day: <strong style={{color:C.cream}}>{f.searchFn(last.boxes)} looks</strong>. More boxes = more checking.</>}
-                      {f.id === 'charlie' && <>On Day 1: <strong style={{color:C.cream}}>{f.searchFn(first.boxes)} comparisons</strong>. On the last day: <strong style={{color:C.crimson}}>{f.searchFn(last.boxes).toLocaleString()} comparisons</strong>! 😰</>}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* History sparkline */}
-        <div style={{ marginBottom: 20 }}>
-          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
-            HOW THE WORK GREW EACH DAY
-          </div>
-          <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 80 }}>
-            {history.map((h, hi) => {
-              const maxC = Math.max(...h.checks);
-              return (
-                <div key={hi} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-                  <div style={{ display: 'flex', gap: 1, alignItems: 'flex-end', height: 60 }}>
-                    {FRIENDS.map((f, fi) => (
-                      <div key={f.id} style={{
-                        width: 6, borderRadius: '2px 2px 0 0',
-                        height: `${Math.max(3, (h.checks[fi] / maxC) * 55)}px`,
-                        background: f.color, opacity: 0.7,
-                      }} />
-                    ))}
-                  </div>
-                  <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.3)' }}>{h.boxes}</div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="font-sans" style={{ fontSize: 10, color: 'rgba(244,235,214,0.4)', marginTop: 6, textAlign: 'center' }}>
-            Each column = one day. Taller bar = more work. See how 💥 red explodes?
-          </div>
-        </div>
-
-        <div style={{ textAlign: 'center' }}>
-          <button onClick={restart} style={{
-            background: C.gold, color: C.ink, border: 'none',
-            padding: '12px 32px', fontSize: 14, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-          }}>
-            Play Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── MAIN GAME BOARD ──
-  const d = DAYS[day];
+  const sizes = [4, 8, 16, 32, 64, 128];
 
   return (
     <div>
-      {/* Day banner */}
-      <div style={{
-        textAlign: 'center', marginBottom: 16,
-        padding: '10px', background: 'rgba(206,187,142,0.08)', borderRadius: 6,
-      }}>
-        <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.15em', color: C.gold, marginBottom: 2 }}>
-          DAY {d.day} OF {DAYS.length}
+      {/* Pick two algorithms */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* Left picker */}
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.cobalt, marginBottom: 6, fontWeight: 600 }}>
+            🔵 ALGORITHM A
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {ALGO_DATA.map(a => (
+              <button key={a.key} onClick={() => { if (!racing) setLeftKey(a.key); reset(); }} style={{
+                background: leftKey === a.key ? C.cobalt : 'rgba(244,235,214,0.05)',
+                color: leftKey === a.key ? C.cream : 'rgba(244,235,214,0.5)',
+                border: 'none', padding: '4px 8px', fontSize: 9, borderRadius: 3,
+                cursor: racing ? 'default' : 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+              }}>
+                {a.icon} {a.name.split(' ')[0]}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="font-serif" style={{ fontSize: 20, fontWeight: 500, color: C.cream }}>
-          {d.event}
+
+        {/* Right picker */}
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.crimson, marginBottom: 6, fontWeight: 600 }}>
+            🔴 ALGORITHM B
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {ALGO_DATA.map(a => (
+              <button key={a.key} onClick={() => { if (!racing) setRightKey(a.key); reset(); }} style={{
+                background: rightKey === a.key ? C.crimson : 'rgba(244,235,214,0.05)',
+                color: rightKey === a.key ? C.cream : 'rgba(244,235,214,0.5)',
+                border: 'none', padding: '4px 8px', fontSize: 9, borderRadius: 3,
+                cursor: racing ? 'default' : 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+              }}>
+                {a.icon} {a.name.split(' ')[0]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Race Track */}
-      <div style={{ marginBottom: 20, padding: '12px 0' }}>
-        {FRIENDS.map((f, i) => (
-          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            {/* Name */}
-            <div style={{ width: 56, textAlign: 'right' }}>
-              <div className="font-mono" style={{ fontSize: 8, fontWeight: 700, color: f.color, lineHeight: 1 }}>{f.name.split(' ')[1]}</div>
-            </div>
+      {/* Deck size picker */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 20 }}>
+        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, fontWeight: 600 }}>CARDS:</div>
+        {sizes.map(s => (
+          <button key={s} onClick={() => { if (!racing) { setDeckSize(s); reset(); } }} style={{
+            width: 36, height: 28, borderRadius: 4,
+            background: deckSize === s ? C.gold : 'rgba(244,235,214,0.06)',
+            color: deckSize === s ? C.ink : 'rgba(244,235,214,0.5)',
+            border: 'none', fontSize: 11, fontWeight: 700, cursor: racing ? 'default' : 'pointer',
+            fontFamily: 'JetBrains Mono, monospace',
+          }}>
+            {s}
+          </button>
+        ))}
+      </div>
 
-            {/* Track */}
-            <div style={{
-              flex: 1, height: 32, background: 'rgba(244,235,214,0.04)', borderRadius: 4,
-              position: 'relative', overflow: 'hidden',
-            }}>
-              {/* Grid lines */}
-              {Array.from({ length: TRACK_SPACES + 1 }).map((_, j) => (
-                <div key={j} style={{
-                  position: 'absolute', left: `${(j / TRACK_SPACES) * 100}%`, top: 0, bottom: 0,
-                  width: 1, background: 'rgba(244,235,214,0.05)',
-                }} />
-              ))}
-              {/* Progress fill */}
+      {/* Card pile visual */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 2, marginBottom: 20, flexWrap: 'wrap' }}>
+        {Array.from({ length: Math.min(deckSize, 40) }).map((_, i) => (
+          <div key={i} style={{
+            width: deckSize <= 16 ? 22 : deckSize <= 32 ? 14 : 9,
+            height: deckSize <= 16 ? 30 : deckSize <= 32 ? 20 : 13,
+            background: `rgba(206,187,142,${0.1 + (i / deckSize) * 0.2})`,
+            borderRadius: 2, border: '1px solid rgba(206,187,142,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: deckSize <= 16 ? 9 : 0,
+            color: 'rgba(244,235,214,0.4)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700,
+          }}>
+            {deckSize <= 16 && (i + 1)}
+          </div>
+        ))}
+        {deckSize > 40 && (
+          <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', alignSelf: 'center' }}>+{deckSize - 40}</div>
+        )}
+      </div>
+
+      {/* Race visualization */}
+      <div style={{ marginBottom: 16 }}>
+        {[{ algo: left, steps: leftSteps, total: leftTotal, color: C.cobalt, label: '🔵' },
+          { algo: right, steps: rightSteps, total: rightTotal, color: C.crimson, label: '🔴' }].map((r, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 80, textAlign: 'right' }}>
+              <div className="font-mono" style={{ fontSize: 10, fontWeight: 700, color: r.color }}>{r.algo.icon} {r.algo.name.split(' ')[0]}</div>
+            </div>
+            <div style={{ flex: 1, height: 28, background: 'rgba(244,235,214,0.04)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
               <div style={{
-                position: 'absolute', left: 0, top: 0, bottom: 0,
-                width: `${(positions[i] / TRACK_SPACES) * 100}%`,
-                background: `${f.color}18`, borderRadius: 4,
-                transition: 'width 0.6s ease-out',
+                height: '100%',
+                width: `${r.total > 0 ? (r.steps / Math.max(leftTotal, rightTotal)) * 100 : 0}%`,
+                background: `${r.color}40`,
+                borderRadius: 4,
+                transition: racing ? 'none' : 'width 0.3s ease-out',
               }} />
-              {/* Token */}
+              {/* Step counter overlay */}
               <div style={{
-                position: 'absolute',
-                left: `calc(${(positions[i] / TRACK_SPACES) * 100}% - 12px)`,
-                top: '50%', transform: 'translateY(-50%)',
-                fontSize: 20, transition: 'left 0.6s ease-out', zIndex: 2,
-                filter: positions[i] >= TRACK_SPACES ? 'drop-shadow(0 0 6px gold)' : 'none',
+                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                display: 'flex', alignItems: 'center', gap: 4,
               }}>
-                {f.icon}
+                <div className="font-mono" style={{
+                  fontSize: 14, fontWeight: 800, color: r.steps >= r.total ? r.color : C.cream,
+                }}>
+                  {r.steps.toLocaleString()}
+                </div>
+                <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)' }}>steps</div>
               </div>
-              {/* Finish flag */}
-              <div style={{
-                position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-                fontSize: 12, opacity: 0.3,
-              }}>🏁</div>
-            </div>
-
-            {/* Space count */}
-            <div className="font-mono" style={{ width: 16, fontSize: 10, fontWeight: 700, color: C.cream, textAlign: 'center' }}>
-              {positions[i]}
             </div>
           </div>
         ))}
       </div>
 
-      {/* Lunchbox Pile Visualization */}
-      <div style={{
-        padding: '16px', background: 'rgba(244,235,214,0.03)', borderRadius: 8,
-        border: '1px solid rgba(244,235,214,0.06)', marginBottom: 16,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.12em', color: C.gold, fontWeight: 600 }}>
-            THE LUNCHBOX PILE
+      {/* Start / result */}
+      <div style={{ textAlign: 'center' }}>
+        {!racing && !finished && (
+          <button onClick={startRace} style={{
+            background: C.gold, color: C.ink, border: 'none',
+            padding: '12px 32px', fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            🏁 Race!
+          </button>
+        )}
+        {racing && (
+          <div className="font-mono" style={{ fontSize: 11, color: C.gold, animation: 'pulseGold 1s ease-in-out infinite' }}>
+            Sorting {deckSize} cards...
           </div>
-          <div className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: C.cream }}>
-            {d.boxes} 🍱
-          </div>
-        </div>
-
-        {/* Visual pile of boxes */}
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center',
-          maxHeight: 56, overflow: 'hidden', marginBottom: 10,
-        }}>
-          {Array.from({ length: Math.min(d.boxes, 80) }).map((_, i) => (
-            <div key={i} style={{
-              width: d.boxes <= 16 ? 18 : d.boxes <= 32 ? 12 : 8,
-              height: d.boxes <= 16 ? 18 : d.boxes <= 32 ? 12 : 8,
-              background: 'rgba(206,187,142,0.15)', borderRadius: 2,
-              border: '1px solid rgba(206,187,142,0.1)',
-              fontSize: d.boxes <= 16 ? 10 : 6,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+        )}
+        {finished && (
+          <div style={{ animation: 'fadeUp 0.3s ease-out' }}>
+            <div className="font-serif" style={{ fontSize: 20, fontWeight: 500, color: C.cream, marginBottom: 4 }}>
+              {leftTotal < rightTotal
+                ? <>{left.icon} <span style={{ color: C.cobalt }}>{left.name}</span> wins!</>
+                : leftTotal > rightTotal
+                ? <>{right.icon} <span style={{ color: C.crimson }}>{right.name}</span> wins!</>
+                : <>It's a tie!</>}
+            </div>
+            <div className="font-mono" style={{ fontSize: 11, color: 'rgba(244,235,214,0.5)', marginBottom: 12 }}>
+              {left.name.split(' ')[0]}: {leftTotal.toLocaleString()} steps · {right.name.split(' ')[0]}: {rightTotal.toLocaleString()} steps
+              {Math.abs(leftTotal - rightTotal) > 0 && <> · <strong style={{ color: C.gold }}>{Math.abs(leftTotal - rightTotal).toLocaleString()}</strong> step difference!</>}
+            </div>
+            <button onClick={reset} style={{
+              background: C.cream, color: C.ink, border: 'none',
+              padding: '8px 20px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
             }}>
-              {d.boxes <= 32 && '🍱'}
-            </div>
-          ))}
-          {d.boxes > 80 && (
-            <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', alignSelf: 'center', marginLeft: 4 }}>
-              +{d.boxes - 80} more
-            </div>
-          )}
-        </div>
+              Try Different Cards →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
-        {/* Search animation */}
-        {phase === 'searching' && (
-          <div style={{ marginTop: 8 }}>
-            <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 6 }}>
-              SEARCHING...
+// ─── Double Trouble Mode ───
+const DoubleTrouble = () => {
+  const [leftKey, setLeftKey] = useState('bubble');
+  const [rightKey, setRightKey] = useState('merge');
+  const [results, setResults] = useState([]);
+  const [currentRound, setCurrentRound] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const timerRef = useRef(null);
+
+  const rounds = [4, 8, 16, 32, 64, 128];
+  const left = ALGO_DATA.find(a => a.key === leftKey);
+  const right = ALGO_DATA.find(a => a.key === rightKey);
+
+  const playRound = () => {
+    if (currentRound >= rounds.length) return;
+    setAnimating(true);
+    const n = rounds[currentRound];
+    const lSteps = left.fn(n);
+    const rSteps = right.fn(n);
+
+    let t = 0;
+    const ticks = 20;
+    const entry = { n, lSteps: 0, rSteps: 0, lFinal: lSteps, rFinal: rSteps };
+    setResults(prev => [...prev, entry]);
+
+    timerRef.current = setInterval(() => {
+      t++;
+      setResults(prev => {
+        const updated = [...prev];
+        const last = { ...updated[updated.length - 1] };
+        last.lSteps = Math.min(Math.round((t / ticks) * lSteps), lSteps);
+        last.rSteps = Math.min(Math.round((t / ticks) * rSteps), rSteps);
+        updated[updated.length - 1] = last;
+        return updated;
+      });
+
+      if (t >= ticks) {
+        clearInterval(timerRef.current);
+        setResults(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...updated[updated.length - 1], lSteps: lSteps, rSteps: rSteps };
+          return updated;
+        });
+        setCurrentRound(r => r + 1);
+        setAnimating(false);
+      }
+    }, 50);
+  };
+
+  const restart = () => {
+    clearInterval(timerRef.current);
+    setResults([]);
+    setCurrentRound(0);
+    setAnimating(false);
+  };
+
+  const done = currentRound >= rounds.length;
+  const maxSteps = results.length > 0 ? Math.max(...results.map(r => Math.max(r.lFinal, r.rFinal))) : 1;
+
+  return (
+    <div>
+      {/* Algo pickers */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 130 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.cobalt, marginBottom: 4, fontWeight: 600 }}>🔵 ALGORITHM A</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {ALGO_DATA.map(a => (
+              <button key={a.key} onClick={() => { if (!animating && results.length === 0) { setLeftKey(a.key); } }}
+                disabled={animating || results.length > 0}
+                style={{
+                  background: leftKey === a.key ? C.cobalt : 'rgba(244,235,214,0.05)',
+                  color: leftKey === a.key ? C.cream : 'rgba(244,235,214,0.4)',
+                  border: 'none', padding: '3px 6px', fontSize: 8, borderRadius: 3,
+                  cursor: (animating || results.length > 0) ? 'default' : 'pointer',
+                  fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+                  opacity: (results.length > 0 && leftKey !== a.key) ? 0.3 : 1,
+                }}>
+                {a.icon} {a.name.split(' ')[0]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 130 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.crimson, marginBottom: 4, fontWeight: 600 }}>🔴 ALGORITHM B</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {ALGO_DATA.map(a => (
+              <button key={a.key} onClick={() => { if (!animating && results.length === 0) { setRightKey(a.key); } }}
+                disabled={animating || results.length > 0}
+                style={{
+                  background: rightKey === a.key ? C.crimson : 'rgba(244,235,214,0.05)',
+                  color: rightKey === a.key ? C.cream : 'rgba(244,235,214,0.4)',
+                  border: 'none', padding: '3px 6px', fontSize: 8, borderRadius: 3,
+                  cursor: (animating || results.length > 0) ? 'default' : 'pointer',
+                  fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+                  opacity: (results.length > 0 && rightKey !== a.key) ? 0.3 : 1,
+                }}>
+                {a.icon} {a.name.split(' ')[0]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Round indicators */}
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 16 }}>
+        {rounds.map((n, i) => (
+          <div key={n} style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            opacity: i <= currentRound ? 1 : 0.3,
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: i < currentRound ? 'rgba(206,187,142,0.15)' : i === currentRound ? `${C.gold}30` : 'rgba(244,235,214,0.04)',
+              border: i === currentRound ? `2px solid ${C.gold}` : '1px solid rgba(244,235,214,0.08)',
+              fontSize: 11, fontWeight: 700, color: C.cream, fontFamily: 'JetBrains Mono, monospace',
+            }}>
+              {n}
             </div>
-            {FRIENDS.map((f, i) => (
-              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <div style={{ width: 16, fontSize: 14, textAlign: 'center' }}>{f.icon}</div>
-                <div style={{ flex: 1, height: 10, background: 'rgba(244,235,214,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%',
-                    width: `${searchProgress[i] * 100}%`,
-                    background: searchProgress[i] >= 1 ? C.emerald : f.color,
-                    borderRadius: 2,
-                    transition: 'width 0.08s linear, background 0.2s',
-                  }} />
-                </div>
-                <div className="font-mono" style={{ width: 36, fontSize: 8, color: searchProgress[i] >= 1 ? C.emerald : 'rgba(244,235,214,0.3)', fontWeight: 600 }}>
-                  {searchProgress[i] >= 1 ? 'FOUND!' : '...'}
+            <div className="font-mono" style={{ fontSize: 6, color: 'rgba(244,235,214,0.3)' }}>cards</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Results bar chart */}
+      {results.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {results.map((r, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div className="font-mono" style={{ fontSize: 7, color: C.cream, fontWeight: 600 }}>{r.n} cards</div>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 80 }}>
+                  {/* Left bar */}
+                  <div style={{ width: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div className="font-mono" style={{ fontSize: 7, color: C.cobalt, fontWeight: 700, marginBottom: 1 }}>
+                      {r.lSteps > 999 ? `${(r.lSteps / 1000).toFixed(1)}K` : r.lSteps}
+                    </div>
+                    <div style={{
+                      width: '100%', borderRadius: '2px 2px 0 0',
+                      height: `${Math.max(3, (r.lSteps / maxSteps) * 60)}px`,
+                      background: C.cobalt, opacity: 0.7,
+                      transition: 'height 0.3s ease-out',
+                    }} />
+                  </div>
+                  {/* Right bar */}
+                  <div style={{ width: 16, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div className="font-mono" style={{ fontSize: 7, color: C.crimson, fontWeight: 700, marginBottom: 1 }}>
+                      {r.rSteps > 999 ? `${(r.rSteps / 1000).toFixed(1)}K` : r.rSteps}
+                    </div>
+                    <div style={{
+                      width: '100%', borderRadius: '2px 2px 0 0',
+                      height: `${Math.max(3, (r.rSteps / maxSteps) * 60)}px`,
+                      background: C.crimson, opacity: 0.7,
+                      transition: 'height 0.3s ease-out',
+                    }} />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Results */}
-        {phase === 'result' && dayResults && (
-          <div style={{ marginTop: 8, animation: 'fadeUp 0.3s ease-out' }}>
-            <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 6 }}>
-              RESULTS
+      {/* Action */}
+      <div style={{ textAlign: 'center' }}>
+        {!done && !animating && (
+          <button onClick={playRound} style={{
+            background: C.gold, color: C.ink, border: 'none',
+            padding: '12px 28px', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            {currentRound === 0 ? '🏁 Start with 4 Cards' : `🃏 Double to ${rounds[currentRound]} Cards!`}
+          </button>
+        )}
+        {animating && (
+          <div className="font-mono" style={{ fontSize: 10, color: C.gold }}>
+            Sorting {rounds[currentRound - 1 >= 0 ? currentRound : 0]} cards...
+          </div>
+        )}
+        {done && (
+          <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+            <div style={{
+              padding: '16px', background: 'rgba(244,235,214,0.05)', borderRadius: 6,
+              border: '1px solid rgba(244,235,214,0.1)', textAlign: 'left', marginBottom: 12,
+            }}>
+              <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 8, fontWeight: 600 }}>
+                WHAT JUST HAPPENED?
+              </div>
+              <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+                {(() => {
+                  const first = results[0];
+                  const last = results[results.length - 1];
+                  const lGrew = last.lFinal / first.lFinal;
+                  const rGrew = last.rFinal / first.rFinal;
+                  const lName = left.name.split(' ')[0];
+                  const rName = right.name.split(' ')[0];
+                  return (
+                    <>
+                      At <strong style={{ color: C.cream }}>4 cards</strong>: {lName} needed <strong style={{ color: C.cobalt }}>{first.lFinal}</strong> steps,
+                      {' '}{rName} needed <strong style={{ color: C.crimson }}>{first.rFinal}</strong>. Pretty close!
+                      <br /><br />
+                      At <strong style={{ color: C.cream }}>128 cards</strong>: {lName} needed <strong style={{ color: C.cobalt }}>{last.lFinal.toLocaleString()}</strong> steps,
+                      {' '}{rName} needed <strong style={{ color: C.crimson }}>{last.rFinal.toLocaleString()}</strong>.
+                      {Math.abs(last.lFinal - last.rFinal) > 100 && (
+                        <><br /><br />
+                          <strong style={{ color: C.gold }}>That's a {Math.abs(last.lFinal - last.rFinal).toLocaleString()} step difference!</strong>
+                          {' '}The cards only doubled each time, but {lGrew > rGrew ? lName : rName}'s work
+                          {' '}grew <strong style={{ color: C.gold }}>{Math.round(Math.max(lGrew, rGrew))}× bigger</strong>.
+                          {' '}That's what "time complexity" means — <em>how fast the work grows</em>.
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             </div>
-            {FRIENDS.map((f, i) => {
-              const checks = dayResults.checks[i];
-              const moves = dayResults.moves[i];
-              return (
-                <div key={f.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
-                  padding: '6px 8px', background: moves >= 2 ? `${f.color}10` : 'transparent', borderRadius: 4,
-                }}>
-                  <div style={{ fontSize: 18, lineHeight: 1 }}>{f.icon}</div>
-                  <div style={{ flex: 1 }}>
-                    <div className="font-mono" style={{ fontSize: 9, color: f.color, fontWeight: 700 }}>{f.name}</div>
-                    <div className="font-sans" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)', fontStyle: 'italic' }}>
-                      "{f.thought(d.boxes)}"
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="font-mono" style={{
-                      fontSize: 12, fontWeight: 800,
-                      color: moves >= 3 ? C.teal : moves >= 2 ? C.cobalt : moves >= 1 ? C.emerald : C.crimson,
-                    }}>
-                      +{moves}
-                    </div>
-                    <div className="font-mono" style={{ fontSize: 7, color: 'rgba(244,235,214,0.3)' }}>spaces</div>
-                  </div>
-                </div>
-              );
-            })}
+            <button onClick={restart} style={{
+              background: C.cream, color: C.ink, border: 'none',
+              padding: '8px 24px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+            }}>
+              Try Different Algorithms
+            </button>
           </div>
         )}
       </div>
+    </div>
+  );
+};
 
-      {/* Action button */}
+// ─── Championship Mode ───
+const Championship = () => {
+  const [round, setRound] = useState(0);
+  const [scores, setScores] = useState(() => ALGO_DATA.map(() => 0));
+  const [animating, setAnimating] = useState(false);
+  const [roundResults, setRoundResults] = useState(null);
+  const [history, setHistory] = useState([]);
+  const timerRef = useRef(null);
+
+  const sizes = [8, 16, 32, 64, 128];
+  const done = round >= sizes.length;
+
+  const playRound = () => {
+    if (done || animating) return;
+    setAnimating(true);
+    const n = sizes[round];
+    const steps = ALGO_DATA.map(a => a.fn(n));
+    const maxS = Math.max(...steps);
+
+    let t = 0;
+    const ticks = 25;
+    const partial = ALGO_DATA.map(() => 0);
+
+    timerRef.current = setInterval(() => {
+      t++;
+      const updated = steps.map((s, i) => Math.min(Math.round((t / ticks) * s), s));
+      setRoundResults({ n, steps: updated, finals: steps });
+
+      if (t >= ticks) {
+        clearInterval(timerRef.current);
+        setRoundResults({ n, steps, finals: steps });
+
+        // Score: rank by steps (fewer = higher score)
+        const ranked = steps.map((s, i) => ({ i, s })).sort((a, b) => a.s - b.s);
+        const points = [7, 5, 3, 2, 1, 1, 0]; // 1st through 7th
+        const newScores = [...scores];
+        ranked.forEach((r, rank) => {
+          newScores[r.i] += (points[rank] || 0);
+        });
+        setScores(newScores);
+        setHistory(prev => [...prev, { n, steps }]);
+        setRound(r => r + 1);
+        setAnimating(false);
+      }
+    }, 50);
+  };
+
+  const restart = () => {
+    clearInterval(timerRef.current);
+    setRound(0); setScores(ALGO_DATA.map(() => 0));
+    setAnimating(false); setRoundResults(null); setHistory([]);
+  };
+
+  const sorted = ALGO_DATA.map((a, i) => ({ ...a, score: scores[i], idx: i }))
+    .sort((a, b) => b.score - a.score);
+
+  return (
+    <div>
+      {/* Round progress */}
+      <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 16 }}>
+        {sizes.map((n, i) => (
+          <div key={n} style={{
+            padding: '4px 10px', borderRadius: 4, textAlign: 'center',
+            background: i < round ? 'rgba(206,187,142,0.12)' : i === round && !done ? `${C.gold}20` : 'rgba(244,235,214,0.04)',
+            border: i === round && !done ? `2px solid ${C.gold}` : '1px solid rgba(244,235,214,0.06)',
+          }}>
+            <div className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: i <= round ? C.cream : 'rgba(244,235,214,0.3)' }}>{n}</div>
+            <div className="font-mono" style={{ fontSize: 6, color: 'rgba(244,235,214,0.3)' }}>cards</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Leaderboard */}
+      <div style={{ marginBottom: 16 }}>
+        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.12em', color: C.gold, marginBottom: 6, fontWeight: 600 }}>
+          {done ? '🏆 FINAL STANDINGS' : 'LEADERBOARD'}
+        </div>
+        {sorted.map((a, rank) => {
+          const roundStep = roundResults ? roundResults.steps[a.idx] : null;
+          const roundFinal = roundResults ? roundResults.finals[a.idx] : null;
+          const maxFinal = roundResults ? Math.max(...roundResults.finals) : 1;
+          return (
+            <div key={a.key} style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4,
+              padding: '5px 8px', borderRadius: 4,
+              background: rank === 0 && (done || round > 0) ? 'rgba(206,187,142,0.08)' : 'transparent',
+            }}>
+              <div className="font-mono" style={{ width: 16, fontSize: 10, fontWeight: 700, color: rank === 0 ? C.gold : 'rgba(244,235,214,0.3)' }}>
+                {rank + 1}.
+              </div>
+              <div style={{ width: 18, fontSize: 14, textAlign: 'center' }}>{a.icon}</div>
+              <div className="font-mono" style={{ width: 60, fontSize: 9, fontWeight: 700, color: a.tierColor }}>{a.name.split(' ')[0]}</div>
+              {/* Step bar for current round */}
+              <div style={{ flex: 1, height: 14, background: 'rgba(244,235,214,0.04)', borderRadius: 2, overflow: 'hidden', position: 'relative' }}>
+                {roundStep !== null && (
+                  <div style={{
+                    height: '100%',
+                    width: `${maxFinal > 0 ? (roundStep / maxFinal) * 100 : 0}%`,
+                    background: `${a.tierColor}50`, borderRadius: 2,
+                    transition: animating ? 'none' : 'width 0.3s',
+                  }} />
+                )}
+                {roundStep !== null && (
+                  <div className="font-mono" style={{
+                    position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 8, color: C.cream, fontWeight: 600,
+                  }}>
+                    {roundStep > 999 ? `${(roundStep / 1000).toFixed(1)}K` : roundStep}
+                  </div>
+                )}
+              </div>
+              <div className="font-mono" style={{ width: 28, fontSize: 11, fontWeight: 800, color: C.gold, textAlign: 'right' }}>
+                {a.score}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Action */}
       <div style={{ textAlign: 'center' }}>
-        {phase === 'ready' && (
-          <button onClick={playDay} style={{
+        {!done && !animating && (
+          <button onClick={playRound} style={{
             background: C.gold, color: C.ink, border: 'none',
-            padding: '12px 32px', fontSize: 14, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
-            boxShadow: `0 2px 12px ${C.gold}30`,
-          }}>
-            🍱 Open the Lunchboxes!
-          </button>
-        )}
-        {phase === 'result' && (
-          <button onClick={nextDay} style={{
-            background: C.cream, color: C.ink, border: 'none',
-            padding: '10px 28px', fontSize: 13, fontWeight: 600,
+            padding: '12px 28px', fontSize: 13, fontWeight: 700,
             cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
           }}>
-            {day + 1 < DAYS.length && !positions.some(p => p >= TRACK_SPACES) ? `Day ${day + 2} →` : 'See Who Won!'}
+            {round === 0 ? '🏁 Start Championship!' : `Sort ${sizes[round]} Cards!`}
           </button>
         )}
-        {phase === 'searching' && (
-          <div className="font-mono" style={{ fontSize: 10, color: C.gold, animation: 'pulseGold 1s ease-in-out infinite' }}>
-            🔍 Searching through {d.boxes} lunchboxes...
+        {animating && (
+          <div className="font-mono" style={{ fontSize: 10, color: C.gold }}>
+            All 7 algorithms sorting {sizes[round > 0 ? round - 1 : 0]} cards...
+          </div>
+        )}
+        {done && (
+          <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+            <div style={{
+              padding: '16px', background: 'rgba(244,235,214,0.05)', borderRadius: 6,
+              borderLeft: `3px solid ${C.gold}`, textAlign: 'left', marginBottom: 12,
+            }}>
+              <div className="font-sans" style={{ fontSize: 12, color: C.cream, lineHeight: 1.7 }}>
+                💡 The <strong style={{ color: C.gold }}>slow algorithms</strong> (Bubble, Selection) needed <strong style={{ color: C.cream }}>
+                {ALGO_DATA[0].fn(128).toLocaleString()}</strong> steps for 128 cards.
+                {' '}The <strong style={{ color: C.emerald }}>fast ones</strong> (Merge, Quick) only needed <strong style={{ color: C.cream }}>
+                {ALGO_DATA[3].fn(128).toLocaleString()}</strong>.
+                {' '}Same cards, same job — but some algorithms are <em>way</em> smarter about it!
+                {' '}That difference gets even crazier with more cards. At 1,000 cards:
+                {' '}Bubble needs <strong style={{ color: C.crimson }}>{ALGO_DATA[0].fn(1000).toLocaleString()}</strong> steps,
+                {' '}Merge only <strong style={{ color: C.emerald }}>{ALGO_DATA[3].fn(1000).toLocaleString()}</strong>. 🤯
+              </div>
+            </div>
+            <button onClick={restart} style={{
+              background: C.cream, color: C.ink, border: 'none',
+              padding: '8px 24px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+            }}>
+              Run Championship Again
+            </button>
           </div>
         )}
       </div>
@@ -4498,32 +4617,66 @@ const LunchboxRace = () => {
 };
 
 // ─── Complexity Quest Wrapper ───
-const ComplexityQuest = React.forwardRef((props, ref) => (
-  <section id="complexity-quest" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
-    <div style={{ maxWidth: 640, margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: 40 }}>
-        <Eyebrow color={C.gold}>Complexity Quest</Eyebrow>
-        <SerifHeading size={48} color={C.cream}>
-          The Lunchbox <span style={{ fontStyle: 'italic', color: C.gold }}>Race</span>
-        </SerifHeading>
-        <p className="font-serif" style={{
-          fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
-          maxWidth: 440, margin: '20px auto 0', lineHeight: 1.5,
-        }}>
-          A board game about four friends, a growing pile of lunchboxes,
-          and why some strategies are faster than others.
-        </p>
-      </div>
+const ComplexityQuest = React.forwardRef((props, ref) => {
+  const [mode, setMode] = useState('duel');
 
-      <div style={{
-        background: 'rgba(244,235,214,0.03)', border: '1px solid rgba(244,235,214,0.08)',
-        borderRadius: 10, padding: '28px 24px',
-      }}>
-        <LunchboxRace />
+  const modes = [
+    { key: 'duel', icon: '⚔️', name: 'Duel', desc: 'Pick 2 algorithms and race them' },
+    { key: 'double', icon: '📈', name: 'Double Trouble', desc: 'Watch the gap explode as cards double' },
+    { key: 'champ', icon: '🏆', name: 'Championship', desc: 'All 7 algorithms compete for gold' },
+  ];
+
+  return (
+    <section id="complexity-quest" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
+      <div style={{ maxWidth: 700, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <Eyebrow color={C.gold}>Complexity Quest</Eyebrow>
+          <SerifHeading size={48} color={C.cream}>
+            The Sorting <span style={{ fontStyle: 'italic', color: C.gold }}>Showdown</span>
+          </SerifHeading>
+          <p className="font-serif" style={{
+            fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
+            maxWidth: 480, margin: '20px auto 0', lineHeight: 1.5,
+          }}>
+            Same cards. Same job. But which algorithm finishes first?
+            Race them and count every step.
+          </p>
+        </div>
+
+        {/* Mode tabs */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center' }}>
+          {modes.map(m => (
+            <button key={m.key} onClick={() => setMode(m.key)} style={{
+              background: mode === m.key ? C.cream : 'rgba(244,235,214,0.06)',
+              color: mode === m.key ? C.ink : 'rgba(244,235,214,0.6)',
+              border: 'none', padding: '8px 16px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: '4px 4px 0 0',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span>{m.icon}</span> {m.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Game area */}
+        <div style={{
+          background: 'rgba(244,235,214,0.03)', border: '1px solid rgba(244,235,214,0.08)',
+          borderRadius: '0 6px 6px 6px', padding: '24px 24px',
+        }}>
+          <div className="font-sans" style={{
+            fontSize: 12, color: 'rgba(244,235,214,0.5)', marginBottom: 16, textAlign: 'center',
+          }}>
+            {modes.find(m => m.key === mode)?.desc}
+          </div>
+
+          {mode === 'duel' && <DuelMode />}
+          {mode === 'double' && <DoubleTrouble />}
+          {mode === 'champ' && <Championship />}
+        </div>
       </div>
-    </div>
-  </section>
-));
+    </section>
+  );
+});
 
 const Footer = () => (
   <footer style={{
