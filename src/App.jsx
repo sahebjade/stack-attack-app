@@ -1483,7 +1483,7 @@ const Nav = ({ onPlayClick }) => (
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-        <span className="nav-links" style={{ display: 'contents' }}>{['The Game', 'How it Works'].map(link => (
+        <span className="nav-links" style={{ display: 'contents' }}>{['The Game', 'How it Works', 'Complexity Quest'].map(link => (
           <a
             key={link}
             href={`#${link.toLowerCase().replace(/\s/g, '-')}`}
@@ -4001,6 +4001,609 @@ const DemoSection = React.forwardRef(({ initialConfig, onConfigReset }, ref) => 
   );
 });
 
+// ============================================================================
+// COMPLEXITY QUEST — Board game for understanding time complexity
+// ============================================================================
+
+const ALGO_DATA = [
+  { key: 'bubble', name: 'Bubble Sort', icon: '🐢', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 2), desc: 'Checks every pair — lots of work!' },
+  { key: 'selection', name: 'Selection Sort', icon: '🐢', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 2), desc: 'Scans for the smallest each time.' },
+  { key: 'insertion', name: 'Insertion Sort', icon: '🐢', tier: 'Slow', tierColor: C.gold, fn: n => Math.round(n * (n - 1) / 4), desc: 'Shifts cards into place one by one.' },
+  { key: 'merge', name: 'Merge Sort', icon: '🐇', tier: 'Fast', tierColor: C.emerald, fn: n => Math.round(n * Math.log2(n)), desc: 'Splits in half, merges smartly.' },
+  { key: 'quick', name: 'Quick Sort', icon: '🐇', tier: 'Fast', tierColor: C.crimson, fn: n => Math.round(n * Math.log2(n)), desc: 'Picks a pivot, divides & conquers.' },
+  { key: 'heap', name: 'Heap Sort', icon: '🐇', tier: 'Fast', tierColor: C.slate, fn: n => Math.round(n * Math.log2(n)), desc: 'Builds a heap, extracts the max.' },
+  { key: 'radix', name: 'Radix Sort', icon: '⚡', tier: 'Lightning', tierColor: C.teal, fn: n => n * 2, desc: 'Sorts by digit — no comparisons!' },
+];
+
+// --- Mini-Game 1: The Race ---
+const RaceGame = () => {
+  const [left, setLeft] = useState('bubble');
+  const [right, setRight] = useState('merge');
+  const [racing, setRacing] = useState(false);
+  const [deckSize, setDeckSize] = useState(8);
+  const [progress, setProgress] = useState({ left: 0, right: 0 });
+  const [finished, setFinished] = useState(false);
+  const timerRef = useRef(null);
+
+  const leftAlgo = ALGO_DATA.find(a => a.key === left);
+  const rightAlgo = ALGO_DATA.find(a => a.key === right);
+  const leftTotal = leftAlgo.fn(deckSize);
+  const rightTotal = rightAlgo.fn(deckSize);
+
+  const startRace = () => {
+    setRacing(true);
+    setFinished(false);
+    setProgress({ left: 0, right: 0 });
+    const maxSteps = Math.max(leftTotal, rightTotal);
+    const fps = 30;
+    const duration = 2500; // ms
+    const increment = maxSteps / (duration / (1000 / fps));
+    let l = 0, r = 0;
+    timerRef.current = setInterval(() => {
+      l = Math.min(l + increment * (leftTotal / maxSteps), leftTotal);
+      r = Math.min(r + increment * (rightTotal / maxSteps), rightTotal);
+      setProgress({ left: Math.round(l), right: Math.round(r) });
+      if (l >= leftTotal && r >= rightTotal) {
+        clearInterval(timerRef.current);
+        setProgress({ left: leftTotal, right: rightTotal });
+        setFinished(true);
+        setRacing(false);
+      }
+    }, 1000 / fps);
+  };
+
+  useEffect(() => () => clearInterval(timerRef.current), []);
+
+  const reset = () => { setRacing(false); setFinished(false); setProgress({ left: 0, right: 0 }); };
+
+  const sizes = [4, 8, 16, 32, 64];
+
+  return (
+    <div>
+      {/* Algo pickers */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 120 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 6 }}>LEFT RACER</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {ALGO_DATA.map(a => (
+              <button key={a.key} onClick={() => { setLeft(a.key); reset(); }} style={{
+                background: left === a.key ? a.tierColor : 'rgba(244,235,214,0.06)',
+                color: left === a.key ? (a.key === 'bubble' || a.key === 'selection' || a.key === 'insertion' ? C.ink : C.cream) : 'rgba(244,235,214,0.5)',
+                border: 'none', padding: '4px 8px', fontSize: 10, borderRadius: 3,
+                cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+              }}>
+                {a.icon} {a.key.slice(0, 3).toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 120 }}>
+          <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold, marginBottom: 6 }}>RIGHT RACER</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {ALGO_DATA.map(a => (
+              <button key={a.key} onClick={() => { setRight(a.key); reset(); }} style={{
+                background: right === a.key ? a.tierColor : 'rgba(244,235,214,0.06)',
+                color: right === a.key ? (a.key === 'bubble' || a.key === 'selection' || a.key === 'insertion' ? C.ink : C.cream) : 'rgba(244,235,214,0.5)',
+                border: 'none', padding: '4px 8px', fontSize: 10, borderRadius: 3,
+                cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+              }}>
+                {a.icon} {a.key.slice(0, 3).toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Deck size */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 16 }}>
+        <div className="font-mono" style={{ fontSize: 8, letterSpacing: '0.15em', color: C.gold }}>CARDS:</div>
+        {sizes.map(s => (
+          <button key={s} onClick={() => { setDeckSize(s); reset(); }} style={{
+            background: deckSize === s ? C.cream : 'rgba(244,235,214,0.06)',
+            color: deckSize === s ? C.ink : 'rgba(244,235,214,0.5)',
+            border: 'none', padding: '4px 10px', fontSize: 11, borderRadius: 3,
+            cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+          }}>
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {/* Race track */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        {[{ algo: leftAlgo, prog: progress.left, total: leftTotal, side: 'left' },
+          { algo: rightAlgo, prog: progress.right, total: rightTotal, side: 'right' }].map(({ algo, prog, total, side }) => (
+          <div key={side}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 20 }}>{algo.icon}</span>
+              <span className="font-mono" style={{ fontSize: 11, color: C.cream, fontWeight: 600 }}>{algo.name}</span>
+              <span className="font-mono" style={{ fontSize: 9, color: algo.tierColor }}>({algo.tier})</span>
+            </div>
+            <div style={{ height: 28, background: 'rgba(244,235,214,0.06)', borderRadius: 4, position: 'relative', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${total > 0 ? (prog / total) * 100 : 0}%`,
+                background: algo.tierColor, borderRadius: 4,
+                transition: racing ? 'none' : 'width 0.3s ease-out',
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8,
+              }}>
+                {prog > 0 && (
+                  <span className="font-mono" style={{
+                    fontSize: 10, color: C.ink, fontWeight: 700,
+                  }}>{prog}</span>
+                )}
+              </div>
+              {finished && (
+                <div style={{
+                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                  fontSize: 10, fontWeight: 700, color: C.cream, fontFamily: 'JetBrains Mono, monospace',
+                }}>
+                  {total} steps
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Start / Result */}
+      <div style={{ textAlign: 'center' }}>
+        {!racing && !finished && (
+          <button onClick={startRace} style={{
+            background: C.gold, color: C.ink, border: 'none',
+            padding: '10px 28px', fontSize: 13, fontWeight: 700,
+            letterSpacing: '0.08em', cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+            borderRadius: 4,
+          }}>
+            🏁 START RACE
+          </button>
+        )}
+        {finished && (
+          <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+            <div className="font-serif" style={{ fontSize: 22, fontWeight: 500, marginBottom: 4 }}>
+              {leftTotal < rightTotal
+                ? `${leftAlgo.icon} ${leftAlgo.name} wins!`
+                : leftTotal > rightTotal
+                ? `${rightAlgo.icon} ${rightAlgo.name} wins!`
+                : "It's a tie!"}
+            </div>
+            <div className="font-sans" style={{ fontSize: 12, color: 'rgba(244,235,214,0.6)', marginBottom: 8 }}>
+              {leftAlgo.name}: <strong style={{ color: C.cream }}>{leftTotal}</strong> steps
+              {' vs '}
+              {rightAlgo.name}: <strong style={{ color: C.cream }}>{rightTotal}</strong> steps
+              {leftTotal !== rightTotal && (
+                <> — <strong style={{ color: C.gold }}>{Math.abs(leftTotal - rightTotal)}</strong> step difference</>
+              )}
+            </div>
+            {deckSize <= 16 && (
+              <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.5)', marginBottom: 12 }}>
+                💡 Try <strong style={{ color: C.cream }}>{deckSize * 2} cards</strong> — watch how the gap grows!
+              </div>
+            )}
+            <button onClick={reset} style={{
+              background: 'rgba(244,235,214,0.1)', color: C.cream, border: 'none',
+              padding: '8px 20px', fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 3,
+            }}>
+              Race Again
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Mini-Game 2: Predict & Play ---
+const PredictGame = () => {
+  const [round, setRound] = useState(0);
+  const [score, setScore] = useState(0);
+  const [guess, setGuess] = useState('');
+  const [result, setResult] = useState(null);
+  const [streak, setStreak] = useState(0);
+
+  const challenges = [
+    { algo: 'bubble', n: 4, hint: 'Bubble checks every pair...' },
+    { algo: 'merge', n: 4, hint: 'Merge splits in half, then merges...' },
+    { algo: 'bubble', n: 8, hint: 'With 8 cards, Bubble checks MANY more pairs...' },
+    { algo: 'merge', n: 8, hint: 'Merge still splits efficiently...' },
+    { algo: 'bubble', n: 16, hint: 'Double again — how much MORE work?' },
+    { algo: 'merge', n: 16, hint: 'Merge stays surprisingly close...' },
+    { algo: 'radix', n: 16, hint: 'Radix uses digits, not comparisons!' },
+    { algo: 'quick', n: 32, hint: 'Quick Sort is smart about splitting...' },
+    { algo: 'bubble', n: 32, hint: 'Bubble on 32 cards... brace yourself!' },
+    { algo: 'heap', n: 64, hint: 'Heap builds a tree structure...' },
+  ];
+
+  const current = challenges[round % challenges.length];
+  const algo = ALGO_DATA.find(a => a.key === current.algo);
+  const actual = algo.fn(current.n);
+  const totalRounds = challenges.length;
+  const gameOver = round >= totalRounds;
+
+  const submitGuess = () => {
+    const g = parseInt(guess);
+    if (isNaN(g) || g < 0) return;
+    const diff = Math.abs(g - actual);
+    const pct = actual > 0 ? diff / actual : 0;
+    let pts = 0;
+    let msg = '';
+    if (pct <= 0.1) { pts = 3; msg = '🎯 Perfect guess!'; }
+    else if (pct <= 0.25) { pts = 2; msg = '👍 Very close!'; }
+    else if (pct <= 0.5) { pts = 1; msg = '🤔 Not bad!'; }
+    else { pts = 0; msg = g > actual ? '📈 Too high!' : '📉 Too low!'; }
+    setResult({ guess: g, actual, pts, msg, diff });
+    setScore(s => s + pts);
+    setStreak(s => pts >= 2 ? s + 1 : 0);
+  };
+
+  const next = () => {
+    setRound(r => r + 1);
+    setGuess('');
+    setResult(null);
+  };
+
+  if (gameOver) {
+    const maxScore = totalRounds * 3;
+    const pct = Math.round((score / maxScore) * 100);
+    return (
+      <div style={{ textAlign: 'center', animation: 'fadeUp 0.4s ease-out' }}>
+        <div style={{ fontSize: 44, marginBottom: 8 }}>
+          {pct >= 80 ? '🏆' : pct >= 50 ? '⭐' : '💪'}
+        </div>
+        <div className="font-serif" style={{ fontSize: 28, fontWeight: 500, marginBottom: 8 }}>
+          {score} / {maxScore} points
+        </div>
+        <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.6)', marginBottom: 4 }}>
+          {pct >= 80 ? "Amazing! You really understand how algorithms grow!"
+           : pct >= 50 ? "Good instincts! Keep playing to sharpen them."
+           : "Keep experimenting — you're building intuition!"}
+        </div>
+        <div className="font-sans" style={{ fontSize: 11, color: 'rgba(244,235,214,0.4)', marginBottom: 16 }}>
+          🐢 Slow algorithms grow MUCH faster with more cards · 🐇 Fast ones barely change
+        </div>
+        <button onClick={() => { setRound(0); setScore(0); setStreak(0); setResult(null); setGuess(''); }} style={{
+          background: C.gold, color: C.ink, border: 'none',
+          padding: '10px 24px', fontSize: 12, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+        }}>
+          Play Again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Progress bar */}
+      <div style={{ display: 'flex', gap: 3, marginBottom: 16 }}>
+        {challenges.map((_, i) => (
+          <div key={i} style={{
+            flex: 1, height: 4, borderRadius: 2,
+            background: i < round ? C.gold : i === round ? C.emerald : 'rgba(244,235,214,0.1)',
+          }} />
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div className="font-mono" style={{ fontSize: 9, color: C.gold, letterSpacing: '0.15em' }}>
+          ROUND {round + 1} OF {totalRounds}
+        </div>
+        <div className="font-mono" style={{ fontSize: 9, color: C.cream, letterSpacing: '0.15em' }}>
+          SCORE: {score} {streak >= 2 && <span style={{ color: C.gold }}>🔥 {streak} streak!</span>}
+        </div>
+      </div>
+
+      {/* Question */}
+      <div style={{
+        padding: '16px 20px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
+        marginBottom: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 24 }}>{algo.icon}</span>
+          <div>
+            <div className="font-serif" style={{ fontSize: 20, fontWeight: 500, color: C.cream }}>
+              {algo.name} on {current.n} cards
+            </div>
+            <div className="font-mono" style={{ fontSize: 9, color: algo.tierColor }}>
+              {algo.tier} · {algo.desc}
+            </div>
+          </div>
+        </div>
+        <div className="font-sans" style={{ fontSize: 12, color: 'rgba(244,235,214,0.6)', fontStyle: 'italic' }}>
+          💡 {current.hint}
+        </div>
+      </div>
+
+      {/* Guess input */}
+      {!result ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="font-sans" style={{ fontSize: 13, color: C.cream }}>
+            How many steps?
+          </div>
+          <input
+            type="number"
+            min="0"
+            value={guess}
+            onChange={e => setGuess(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submitGuess()}
+            placeholder="your guess"
+            style={{
+              flex: 1, background: 'rgba(244,235,214,0.08)', border: `1px solid rgba(244,235,214,0.2)`,
+              color: C.cream, padding: '8px 12px', fontSize: 14, borderRadius: 4,
+              fontFamily: 'JetBrains Mono, monospace', outline: 'none', maxWidth: 120,
+            }}
+          />
+          <button onClick={submitGuess} disabled={!guess} style={{
+            background: guess ? C.gold : 'rgba(244,235,214,0.1)',
+            color: guess ? C.ink : 'rgba(244,235,214,0.3)',
+            border: 'none', padding: '8px 16px', fontSize: 12, fontWeight: 700,
+            cursor: guess ? 'pointer' : 'default', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            Lock In
+          </button>
+        </div>
+      ) : (
+        <div style={{ animation: 'fadeUp 0.3s ease-out' }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '12px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 6,
+            marginBottom: 12,
+          }}>
+            <div>
+              <div className="font-sans" style={{ fontSize: 16, fontWeight: 600, color: C.cream }}>
+                {result.msg}
+              </div>
+              <div className="font-mono" style={{ fontSize: 11, color: 'rgba(244,235,214,0.6)', marginTop: 2 }}>
+                You guessed <strong style={{ color: C.cream }}>{result.guess}</strong> · Actual: <strong style={{ color: C.gold }}>{result.actual}</strong>
+                {result.diff > 0 && <> · Off by {result.diff}</>}
+              </div>
+            </div>
+            <div className="font-serif" style={{ fontSize: 28, fontWeight: 600, color: result.pts >= 2 ? C.gold : result.pts === 1 ? C.cream : 'rgba(244,235,214,0.3)' }}>
+              +{result.pts}
+            </div>
+          </div>
+          <button onClick={next} style={{
+            background: C.cream, color: C.ink, border: 'none',
+            padding: '8px 20px', fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            {round + 1 < totalRounds ? 'Next Question →' : 'See Results'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Mini-Game 3: Doubling Dare ---
+const DoublingDare = () => {
+  const [algo, setAlgo] = useState('bubble');
+  const [reveal, setReveal] = useState(0); // how many rows revealed
+  const sizes = [2, 4, 8, 16, 32, 64, 128];
+  const algoData = ALGO_DATA.find(a => a.key === algo);
+
+  const rows = sizes.map((n, i) => {
+    const steps = algoData.fn(n);
+    const prev = i > 0 ? algoData.fn(sizes[i - 1]) : null;
+    const growth = prev ? (steps / prev).toFixed(1) : null;
+    return { n, steps, growth };
+  });
+
+  const maxSteps = rows[rows.length - 1].steps;
+
+  const revealNext = () => setReveal(r => Math.min(r + 1, sizes.length));
+
+  return (
+    <div>
+      {/* Algo picker */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 16 }}>
+        {ALGO_DATA.map(a => (
+          <button key={a.key} onClick={() => { setAlgo(a.key); setReveal(0); }} style={{
+            background: algo === a.key ? a.tierColor : 'rgba(244,235,214,0.06)',
+            color: algo === a.key ? (a.tierColor === C.gold ? C.ink : C.cream) : 'rgba(244,235,214,0.5)',
+            border: 'none', padding: '5px 10px', fontSize: 10, borderRadius: 3,
+            cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600,
+          }}>
+            {a.icon} {a.name.split(' ')[0]}
+          </button>
+        ))}
+      </div>
+
+      {/* Dare intro */}
+      <div className="font-sans" style={{ fontSize: 13, color: 'rgba(244,235,214,0.7)', marginBottom: 12, lineHeight: 1.5 }}>
+        Every time we <strong style={{ color: C.cream }}>double</strong> the cards, how much more work does <strong style={{ color: algoData.tierColor }}>{algoData.name}</strong> need?
+        {' '}Tap to reveal each row!
+      </div>
+
+      {/* Table */}
+      <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr 60px 50px', gap: '6px 10px', alignItems: 'center' }}>
+        {/* Header */}
+        <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)' }}>CARDS</div>
+        <div />
+        <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)', textAlign: 'right' }}>STEPS</div>
+        <div className="font-mono" style={{ fontSize: 7, letterSpacing: '0.12em', color: 'rgba(244,235,214,0.3)', textAlign: 'right' }}>GROWTH</div>
+
+        {rows.map((r, i) => {
+          const visible = i < reveal;
+          return (
+            <React.Fragment key={r.n}>
+              <div className="font-serif" style={{
+                fontSize: 16, fontWeight: 600, color: visible ? C.cream : 'rgba(244,235,214,0.15)',
+              }}>{r.n}</div>
+              <div style={{ height: 14, background: 'rgba(244,235,214,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                {visible && (
+                  <div style={{
+                    height: '100%', width: `${maxSteps > 0 ? (r.steps / maxSteps) * 100 : 0}%`,
+                    background: algoData.tierColor, borderRadius: 2,
+                    transition: 'width 0.6s ease-out',
+                    minWidth: 2,
+                  }} />
+                )}
+              </div>
+              <div className="font-mono" style={{
+                fontSize: 11, fontWeight: 600, textAlign: 'right',
+                color: visible ? C.cream : 'rgba(244,235,214,0.1)',
+              }}>
+                {visible ? r.steps : '???'}
+              </div>
+              <div className="font-mono" style={{
+                fontSize: 10, textAlign: 'right', fontWeight: 600,
+                color: visible && r.growth
+                  ? parseFloat(r.growth) >= 3.5 ? C.crimson : parseFloat(r.growth) >= 2.5 ? C.gold : C.emerald
+                  : 'rgba(244,235,214,0.1)',
+              }}>
+                {visible ? (r.growth ? `${r.growth}×` : '—') : ''}
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* Reveal button + insight */}
+      <div style={{ textAlign: 'center', marginTop: 16 }}>
+        {reveal < sizes.length ? (
+          <button onClick={revealNext} style={{
+            background: C.gold, color: C.ink, border: 'none',
+            padding: '10px 24px', fontSize: 13, fontWeight: 700,
+            cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 4,
+          }}>
+            {reveal === 0 ? '🎲 Start Revealing' : `📦 Double to ${sizes[reveal]} cards`}
+          </button>
+        ) : (
+          <div style={{ animation: 'fadeUp 0.4s ease-out' }}>
+            <div style={{
+              padding: '14px 16px', background: 'rgba(244,235,214,0.06)', borderRadius: 4,
+              borderLeft: `3px solid ${C.gold}`, textAlign: 'left', marginBottom: 12,
+            }}>
+              <div className="font-sans" style={{ fontSize: 13, color: C.cream, lineHeight: 1.6 }}>
+                {['bubble', 'selection', 'insertion'].includes(algo) ? (
+                  <>
+                    <strong style={{ color: algoData.tierColor }}>🐢 {algoData.name}</strong> is a "Slow" algorithm.
+                    {' '}Every time you double the cards, the work grows by about <strong style={{ color: C.gold }}>4×</strong>!
+                    {' '}That's because it has to check <em>pairs</em> of cards — and pairs grow much faster than the pile.
+                    {' '}With 128 cards it needs <strong style={{ color: C.cream }}>{rows[6].steps.toLocaleString()}</strong> steps! 🐌
+                  </>
+                ) : algo === 'radix' ? (
+                  <>
+                    <strong style={{ color: algoData.tierColor }}>⚡ {algoData.name}</strong> is "Lightning" fast!
+                    {' '}Double the cards → double the work. That's it!
+                    {' '}It looks at each card's <em>digits</em> instead of comparing cards.
+                    {' '}Even 128 cards takes only <strong style={{ color: C.cream }}>{rows[6].steps}</strong> steps! ⚡
+                  </>
+                ) : (
+                  <>
+                    <strong style={{ color: algoData.tierColor }}>🐇 {algoData.name}</strong> is a "Fast" algorithm!
+                    {' '}Double the cards → work grows by only about <strong style={{ color: C.gold }}>2×</strong>.
+                    {' '}It's smart — it <em>divides</em> the problem instead of checking everything.
+                    {' '}128 cards needs only <strong style={{ color: C.cream }}>{rows[6].steps.toLocaleString()}</strong> steps vs Bubble's {ALGO_DATA[0].fn(128).toLocaleString()}! 🏎️
+                  </>
+                )}
+              </div>
+            </div>
+            <button onClick={() => setReveal(0)} style={{
+              background: 'rgba(244,235,214,0.1)', color: C.cream, border: 'none',
+              padding: '8px 20px', fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: 3,
+            }}>
+              Try Another Algorithm
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Complexity Quest Section ---
+const ComplexityQuest = React.forwardRef((props, ref) => {
+  const [activeGame, setActiveGame] = useState('race');
+
+  const games = [
+    { key: 'race', icon: '🏁', name: 'The Race', desc: 'Watch algorithms race head-to-head' },
+    { key: 'predict', icon: '🎯', name: 'Predict & Play', desc: 'Guess how many steps — build intuition' },
+    { key: 'doubling', icon: '📦', name: 'Doubling Dare', desc: 'See what happens when you double the cards' },
+  ];
+
+  return (
+    <section id="complexity-quest" ref={ref} style={{ padding: '100px 32px', background: C.dark, color: C.cream }}>
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <Eyebrow color={C.gold}>Complexity Quest</Eyebrow>
+          <SerifHeading size={48} color={C.cream}>
+            Why are some algorithms <span style={{ fontStyle: 'italic', color: C.gold }}>faster?</span>
+          </SerifHeading>
+          <p className="font-serif" style={{
+            fontSize: 18, color: 'rgba(244, 235, 214, 0.7)', fontStyle: 'italic',
+            maxWidth: 520, margin: '20px auto 0', lineHeight: 1.5,
+          }}>
+            Not all algorithms are created equal. Some are 🐢 Slow, some are 🐇 Fast, and one is ⚡ Lightning.
+            Play these mini-games to discover why!
+          </p>
+        </div>
+
+        {/* Speed Tier Legend */}
+        <div style={{
+          display: 'flex', gap: 16, justifyContent: 'center', marginBottom: 32, flexWrap: 'wrap',
+        }}>
+          {[
+            { icon: '🐢', tier: 'Slow', color: C.gold, desc: 'Work grows 4× when cards double', algos: 'Bubble, Selection, Insertion' },
+            { icon: '🐇', tier: 'Fast', color: C.emerald, desc: 'Work grows ~2× when cards double', algos: 'Merge, Quick, Heap' },
+            { icon: '⚡', tier: 'Lightning', color: C.teal, desc: 'Work grows exactly 2× — no wasted steps', algos: 'Radix' },
+          ].map(t => (
+            <div key={t.tier} style={{
+              padding: '12px 16px', background: 'rgba(244,235,214,0.04)', borderRadius: 6,
+              border: `1px solid rgba(244,235,214,0.08)`, textAlign: 'center', minWidth: 160,
+            }}>
+              <div style={{ fontSize: 28, marginBottom: 4 }}>{t.icon}</div>
+              <div className="font-mono" style={{ fontSize: 11, color: t.color, fontWeight: 700, letterSpacing: '0.1em' }}>
+                {t.tier.toUpperCase()}
+              </div>
+              <div className="font-sans" style={{ fontSize: 10, color: 'rgba(244,235,214,0.5)', marginTop: 2 }}>
+                {t.desc}
+              </div>
+              <div className="font-mono" style={{ fontSize: 8, color: 'rgba(244,235,214,0.3)', marginTop: 4 }}>
+                {t.algos}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Game selector tabs */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {games.map(g => (
+            <button key={g.key} onClick={() => setActiveGame(g.key)} style={{
+              background: activeGame === g.key ? C.cream : 'rgba(244,235,214,0.06)',
+              color: activeGame === g.key ? C.ink : 'rgba(244,235,214,0.6)',
+              border: 'none', padding: '8px 16px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif', borderRadius: '4px 4px 0 0',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span>{g.icon}</span> {g.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Game area */}
+        <div style={{
+          background: 'rgba(244,235,214,0.03)', border: '1px solid rgba(244,235,214,0.08)',
+          borderRadius: '0 6px 6px 6px', padding: '28px 28px',
+        }}>
+          {/* Game description */}
+          <div className="font-sans" style={{
+            fontSize: 12, color: 'rgba(244,235,214,0.5)', marginBottom: 16, textAlign: 'center',
+          }}>
+            {games.find(g => g.key === activeGame)?.desc}
+          </div>
+
+          {activeGame === 'race' && <RaceGame />}
+          {activeGame === 'predict' && <PredictGame />}
+          {activeGame === 'doubling' && <DoublingDare />}
+        </div>
+      </div>
+    </section>
+  );
+});
+
 const Footer = () => (
   <footer style={{
     background: C.dark, color: C.cream, padding: '32px 16px',
@@ -4049,6 +4652,7 @@ export default function App() {
           initialConfig={demoConfig}
           onConfigReset={(cfg) => setDemoConfig(cfg)}
         />
+        <ComplexityQuest />
       </main>
       <Footer />
     </div>
