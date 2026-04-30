@@ -3664,7 +3664,11 @@ const DemoPlay = ({ initial, onReset }) => {
   const [state, dispatch] = useReducer(rootReducer, initial, () =>
     initialState(initial.school, initial.mode, initial.deckSize || 8)
   );
-  const hint = state.mode === 'tutorial' ? getTutorialHint(state, 0) : null;
+  const hint = getTutorialHint(state, 0);
+  const isTutorial = state.mode === 'tutorial';
+  const [showHint, setShowHint] = useState(false);
+  const prevHintRef = useRef(hint);
+  if (prevHintRef.current !== hint) { prevHintRef.current = hint; if (showHint) setShowHint(false); }
   const allFinished = state.players.every(p => p.finished);
 
   // Growth Challenge state
@@ -3780,8 +3784,8 @@ const DemoPlay = ({ initial, onReset }) => {
         }}>← New Round</button>
       </div>
 
-      {/* Tutorial hint */}
-      {hint && !allFinished && (
+      {/* Tutorial hint (always visible) or Help button (solo mode — on demand) */}
+      {hint && !allFinished && isTutorial && (
         <div key={hint} style={{
           background: '#FFF8E1', border: `1px solid ${C.gold}`,
           borderLeft: `4px solid ${C.gold}`, padding: '12px 18px', marginBottom: 20,
@@ -3792,6 +3796,37 @@ const DemoPlay = ({ initial, onReset }) => {
             textTransform: 'uppercase', color: C.gold, marginRight: 10,
           }}>Hint</span>
           <span className="font-sans" style={{ fontSize: 12, color: C.ink, lineHeight: 1.5 }}>{hint}</span>
+        </div>
+      )}
+      {hint && !allFinished && !isTutorial && (
+        <div style={{ marginBottom: 20 }}>
+          {!showHint ? (
+            <button onClick={() => setShowHint(true)} style={{
+              background: '#FFF8E1', border: `1px solid ${C.gold}`, borderRadius: 20,
+              padding: '6px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.gold }}>?</span>
+              <span className="font-sans" style={{ fontSize: 11, color: C.gold, fontWeight: 600 }}>Stuck? Tap for a hint</span>
+            </button>
+          ) : (
+            <div key={hint} style={{
+              background: '#FFF8E1', border: `1px solid ${C.gold}`,
+              borderLeft: `4px solid ${C.gold}`, padding: '12px 18px',
+              animation: 'fadeUp 0.3s ease-out', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <span className="font-sans" style={{
+                  fontWeight: 600, letterSpacing: '0.1em', fontSize: 9,
+                  textTransform: 'uppercase', color: C.gold, marginRight: 10,
+                }}>Hint</span>
+                <span className="font-sans" style={{ fontSize: 12, color: C.ink, lineHeight: 1.5 }}>{hint}</span>
+              </div>
+              <button onClick={() => setShowHint(false)} style={{
+                background: 'none', border: 'none', cursor: 'pointer', fontSize: 14,
+                color: C.soft, padding: '4px 8px', marginLeft: 12,
+              }}>✕</button>
+            </div>
+          )}
         </div>
       )}
 
